@@ -11,3 +11,7 @@ spring:
     properties:
       hibernate:
         format_sql: true
+api:
+  security:
+    token:
+      secret: ${JWT_SECRET:minha_senha_secreta_super_segura_123}
