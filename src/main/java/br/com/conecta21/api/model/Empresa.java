@@ -1,9 +1,11 @@
 package br.com.conecta21.api.model;
 
 import jakarta.persistence.*;
+import lombok.Getter;
 
 import java.time.LocalDateTime;
 
+@Getter
 @Entity
 @Table(name = "empresas")
 public class Empresa {
