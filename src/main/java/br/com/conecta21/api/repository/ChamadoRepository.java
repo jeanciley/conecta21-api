@@ -1,13 +1,21 @@
 package br.com.conecta21.api.repository;
 
 import br.com.conecta21.api.model.Chamado;
+import br.com.conecta21.api.model.StatusChamado;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Repository
 public interface ChamadoRepository extends JpaRepository<Chamado, Long> {
 
     List<Chamado> findAllByEmpresaId(Long empresaId);
+
+    long countByEmpresaIdAndStatusAndDataAberturaAfter(
+            Long empresaId,
+            StatusChamado status,
+            LocalDateTime dataLimite
+    );
 }
