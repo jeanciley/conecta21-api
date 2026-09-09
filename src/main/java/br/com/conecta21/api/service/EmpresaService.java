@@ -34,6 +34,7 @@ public class EmpresaService {
         admin.setEmpresa(empresa);
         admin.setNome(dto.nomeUsuario());
         admin.setSenha(passwordEncoder.encode(dto.senhaUsuario()));
+        admin.setEmail(dto.emailUsuario());
         admin.setPerfil("ADMIN");
 
         usuarioRepository.save(admin);
