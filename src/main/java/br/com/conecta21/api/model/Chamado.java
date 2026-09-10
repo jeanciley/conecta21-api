@@ -16,10 +16,12 @@ public class Chamado {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Setter
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "empresa_id", nullable = false)
     private Empresa empresa;
 
+    @Setter
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "solicitante_id", nullable = false)
     private Usuario solicitante;
@@ -28,9 +30,11 @@ public class Chamado {
     @JoinColumn(name = "tecnico_id")
     private Usuario tecnico;
 
+    @Setter
     @Column(nullable = false, length = 150)
     private String titulo;
 
+    @Setter
     @Column(nullable = false, columnDefinition = "TEXT")
     private String descricao;
 
@@ -40,6 +44,7 @@ public class Chamado {
     @Column(name = "data_abertura", updatable = false)
     private LocalDateTime dataAbertura;
 
+    @Setter
     @Column(name = "data_fechamento")
     private LocalDateTime dataFechamento;
 
