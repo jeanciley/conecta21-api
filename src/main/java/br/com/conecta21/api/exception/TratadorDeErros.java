@@ -20,7 +20,8 @@ public class TratadorDeErros {
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<String> tratarErro400(IllegalArgumentException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ex.getMessage());
-   
+    }
+
     @ExceptionHandler(BadCredentialsException.class)
     public ResponseEntity<String> tratarErroBadCredentials() {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Credenciais inválidas. Verifique seu e-mail e senha.");
