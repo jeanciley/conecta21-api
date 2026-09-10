@@ -7,6 +7,7 @@ import lombok.Setter;
 import java.time.LocalDateTime;
 
 @Getter
+@Setter
 @Entity
 @Table(name = "chamados")
 public class Chamado {
@@ -37,9 +38,8 @@ public class Chamado {
     @Column(nullable = false, columnDefinition = "TEXT")
     private String descricao;
 
-    @Setter
-    @Column(nullable = false, length = 30)
-    private String status = "ABERTO";
+    @Enumerated(EnumType.STRING)
+    private StatusChamado status;
 
     @Column(name = "data_abertura", updatable = false)
     private LocalDateTime dataAbertura;

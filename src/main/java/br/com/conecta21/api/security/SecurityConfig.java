@@ -36,6 +36,13 @@ public class SecurityConfig {
                     // Rotas públicas (Cadastro e Login)
                     req.requestMatchers(HttpMethod.POST, "/api/auth").permitAll();
                     req.requestMatchers(HttpMethod.POST, "/api/empresas").permitAll();
+
+                    req.requestMatchers(
+                            "/v3/api-docs",
+                            "/v3/api-docs/**",
+                            "/swagger-ui.html",
+                            "/swagger-ui/**"
+                    ).permitAll();
                     // Qualquer outra rota exige o Token JWT
                     req.anyRequest().authenticated();
                 })
