@@ -21,4 +21,9 @@ public interface ChamadoRepository extends JpaRepository<Chamado, Long> {
             StatusChamado status,
             LocalDateTime dataLimite
     );
+
+    List<Chamado> findByStatusInAndDataLimiteResolucaoBefore(
+            List<StatusChamado> status,
+            LocalDateTime momentoAtual
+    );
 }
