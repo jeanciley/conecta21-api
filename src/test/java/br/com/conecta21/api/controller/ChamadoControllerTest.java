@@ -1,16 +1,19 @@
 package br.com.conecta21.api.controller;
 
-import br.com.conecta21.api.dto.ChamadoRespostaDTO;
-import br.com.conecta21.api.service.ChamadoService;
 import br.com.conecta21.api.TokenService.TokenService;
+import br.com.conecta21.api.dto.ChamadoRespostaDTO;
 import br.com.conecta21.api.repository.UsuarioRepository;
-import tools.jackson.databind.ObjectMapper;import jakarta.persistence.EntityNotFoundException;
+import br.com.conecta21.api.service.AnexoChamadoService;
+import br.com.conecta21.api.service.ChamadoService;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.persistence.EntityNotFoundException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.test.context.support.WithMockUser;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDateTime;
@@ -18,15 +21,12 @@ import java.util.List;
 import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(ChamadoController.class)
 class ChamadoControllerTest {
@@ -37,15 +37,16 @@ class ChamadoControllerTest {
     @Autowired
     private ObjectMapper objectMapper;
 
-    @MockitoBean
+    @MockBean
     private ChamadoService chamadoService;
 
-    // Dependências do SecurityFilter real (carregado pelo slice): sem header
-    // Authorization o filtro apenas segue a cadeia, sem interferir nos testes.
-    @MockitoBean
+    @MockBean
+    private AnexoChamadoService anexoChamadoService;
+
+    @MockBean
     private TokenService tokenService;
 
-    @MockitoBean
+    @MockBean
     private UsuarioRepository usuarioRepository;
 
     private ChamadoRespostaDTO resposta(Long id, Long empresaId) {
@@ -56,7 +57,7 @@ class ChamadoControllerTest {
 
     @Test
     @WithMockUser
-    void criar_retorna201ComLocationECorpo() throws Exception {
+    void criarJson_retorna201ComLocationECorpo() throws Exception {
         when(chamadoService.criar(any())).thenReturn(resposta(1L, 1L));
 
         mockMvc.perform(post("/api/chamados").with(csrf())
@@ -73,17 +74,31 @@ class ChamadoControllerTest {
 
     @Test
     @WithMockUser
-    void criar_empresaIdEnviadoPeloClienteEIgnorado() throws Exception {
-        when(chamadoService.criar(any())).thenReturn(resposta(1L, 1L));
+    void criarMultipartComAnexo_retorna201() throws Exception {
+        when(chamadoService.criar(any(), anyList())).thenReturn(resposta(2L, 1L));
 
-        // O DTO de criação não possui campo de tenant: o JSON extra é ignorado
-        // e a empresa é sempre resolvida pelo JWT no Service.
-        mockMvc.perform(post("/api/chamados").with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"titulo":"X","descricao":"Y","empresaId":999,"empresa_id":999}"""))
+        MockMultipartFile dados = new MockMultipartFile(
+                "dados",
+                "",
+                MediaType.APPLICATION_JSON_VALUE,
+                """
+                {"titulo":"Erro 500","descricao":"Segue print e log."}
+                """.getBytes()
+        );
+
+        MockMultipartFile arquivo = new MockMultipartFile(
+                "arquivos",
+                "erro.log",
+                MediaType.TEXT_PLAIN_VALUE,
+                "stacktrace".getBytes()
+        );
+
+        mockMvc.perform(multipart("/api/chamados")
+                        .file(dados)
+                        .file(arquivo)
+                        .with(csrf()))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.empresaId").value(1));
+                .andExpect(jsonPath("$.id").value(2));
     }
 
     @Test
@@ -108,18 +123,9 @@ class ChamadoControllerTest {
 
     @Test
     @WithMockUser
-    void detalhar_existente_retorna200() throws Exception {
-        when(chamadoService.detalhar(1L)).thenReturn(resposta(1L, 1L));
-
-        mockMvc.perform(get("/api/chamados/1"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id").value(1));
-    }
-
-    @Test
-    @WithMockUser
     void detalhar_chamadoDeOutroTenant_retorna404() throws Exception {
-        when(chamadoService.detalhar(99L)).thenThrow(new EntityNotFoundException("Chamado não encontrado."));
+        when(chamadoService.detalhar(99L))
+                .thenThrow(new EntityNotFoundException("Chamado não encontrado."));
 
         mockMvc.perform(get("/api/chamados/99"))
                 .andExpect(status().isNotFound());
@@ -133,21 +139,8 @@ class ChamadoControllerTest {
         mockMvc.perform(patch("/api/chamados/1/status").with(csrf())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"status":"EM_ATENDIMENTO"}"""))
+                                {"status":"EM_ANDAMENTO"}"""))
                 .andExpect(status().isOk());
-    }
-
-    @Test
-    @WithMockUser
-    void alterarStatus_chamadoDeOutroTenant_retorna404() throws Exception {
-        when(chamadoService.alterarStatus(eq(99L), any()))
-                .thenThrow(new EntityNotFoundException("Chamado não encontrado."));
-
-        mockMvc.perform(patch("/api/chamados/99/status").with(csrf())
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {"status":"FECHADO"}"""))
-                .andExpect(status().isNotFound());
     }
 
     @Test

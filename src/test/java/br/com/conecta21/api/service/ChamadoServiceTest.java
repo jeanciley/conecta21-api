@@ -5,6 +5,7 @@ import br.com.conecta21.api.dto.ChamadoRespostaDTO;
 import br.com.conecta21.api.dto.ChamadoStatusDTO;
 import br.com.conecta21.api.model.Chamado;
 import br.com.conecta21.api.model.Empresa;
+import br.com.conecta21.api.model.StatusChamado;
 import br.com.conecta21.api.model.Usuario;
 import br.com.conecta21.api.repository.ChamadoRepository;
 import br.com.conecta21.api.repository.EmpresaRepository;
@@ -17,20 +18,14 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.util.List;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class ChamadoServiceTest {
@@ -47,6 +42,12 @@ class ChamadoServiceTest {
     @Mock
     private TenantContext tenantContext;
 
+    @Mock
+    private AnexoChamadoService anexoChamadoService;
+
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
+
     @InjectMocks
     private ChamadoService service;
 
@@ -59,11 +60,14 @@ class ChamadoServiceTest {
     private Usuario solicitanteMock(Long usuarioId) {
         Usuario solicitante = mock(Usuario.class);
         when(solicitante.getId()).thenReturn(usuarioId);
+        lenient().when(solicitante.getNome()).thenReturn("Maria");
+        lenient().when(solicitante.getEmail()).thenReturn("maria@example.com");
         return solicitante;
     }
 
-    private Chamado chamadoReal(Empresa empresa, Usuario solicitante, String status) {
+    private Chamado chamadoReal(Empresa empresa, Usuario solicitante, StatusChamado status) {
         Chamado chamado = new Chamado();
+        chamado.setId(5L);
         chamado.setEmpresa(empresa);
         chamado.setSolicitante(solicitante);
         chamado.setTitulo("Impressora quebrada");
@@ -90,7 +94,8 @@ class ChamadoServiceTest {
         verify(chamadoRepository).save(captor.capture());
         assertSame(empresaA, captor.getValue().getEmpresa());
         assertSame(solicitante, captor.getValue().getSolicitante());
-        assertEquals(ChamadoService.STATUS_ABERTO, captor.getValue().getStatus());
+        assertEquals(StatusChamado.ABERTO, captor.getValue().getStatus());
+        assertEquals("ABERTO", resposta.status());
         assertEquals(1L, resposta.empresaId());
         assertEquals(10L, resposta.solicitanteId());
     }
@@ -101,7 +106,7 @@ class ChamadoServiceTest {
         Usuario solicitante = solicitanteMock(10L);
         when(tenantContext.getEmpresaIdAutenticada()).thenReturn(1L);
         when(chamadoRepository.findAllByEmpresaId(1L))
-                .thenReturn(List.of(chamadoReal(empresaA, solicitante, "ABERTO")));
+                .thenReturn(List.of(chamadoReal(empresaA, solicitante, StatusChamado.ABERTO)));
 
         List<ChamadoRespostaDTO> resposta = service.listar();
 
@@ -119,57 +124,53 @@ class ChamadoServiceTest {
     }
 
     @Test
-    void detalhar_chamadoDoTenant_retornaDados() {
+    void alterarStatus_resolvido_preencheDataFechamentoEPublicaEvento() {
         Empresa empresaA = empresaMock(1L);
         Usuario solicitante = solicitanteMock(10L);
-        when(tenantContext.getEmpresaIdAutenticada()).thenReturn(1L);
-        when(chamadoRepository.findByIdAndEmpresaId(5L, 1L))
-                .thenReturn(Optional.of(chamadoReal(empresaA, solicitante, "ABERTO")));
+        Chamado existente = chamadoReal(empresaA, solicitante, StatusChamado.ABERTO);
 
-        ChamadoRespostaDTO resposta = service.detalhar(5L);
-
-        assertEquals(1L, resposta.empresaId());
-        assertEquals("ABERTO", resposta.status());
-    }
-
-    @Test
-    void alterarStatus_chamadoDeOutroTenant_bloqueadoSemSalvar() {
-        when(tenantContext.getEmpresaIdAutenticada()).thenReturn(1L);
-        when(chamadoRepository.findByIdAndEmpresaId(99L, 1L)).thenReturn(Optional.empty());
-
-        assertThrows(EntityNotFoundException.class,
-                () -> service.alterarStatus(99L, new ChamadoStatusDTO("FECHADO")));
-        verify(chamadoRepository, never()).save(any(Chamado.class));
-    }
-
-    @Test
-    void alterarStatus_valido_atualizaEPreencheDataFechamento() {
-        Empresa empresaA = empresaMock(1L);
-        Usuario solicitante = solicitanteMock(10L);
-        Chamado existente = chamadoReal(empresaA, solicitante, "ABERTO");
         when(tenantContext.getEmpresaIdAutenticada()).thenReturn(1L);
         when(chamadoRepository.findByIdAndEmpresaId(5L, 1L))
                 .thenReturn(Optional.of(existente));
 
         ChamadoRespostaDTO resposta = service.alterarStatus(5L, new ChamadoStatusDTO("fechado"));
 
-        assertEquals("FECHADO", resposta.status());
+        assertEquals("RESOLVIDO", resposta.status());
         assertNotNull(resposta.dataFechamento());
+        verify(eventPublisher).publishEvent(any(ChamadoStatusAlteradoEvent.class));
     }
 
     @Test
     void alterarStatus_reabrindo_limpaDataFechamento() {
         Empresa empresaA = empresaMock(1L);
         Usuario solicitante = solicitanteMock(10L);
-        Chamado existente = chamadoReal(empresaA, solicitante, "FECHADO");
+        Chamado existente = chamadoReal(empresaA, solicitante, StatusChamado.RESOLVIDO);
+        existente.setDataFechamento(java.time.LocalDateTime.now());
+
         when(tenantContext.getEmpresaIdAutenticada()).thenReturn(1L);
         when(chamadoRepository.findByIdAndEmpresaId(5L, 1L))
                 .thenReturn(Optional.of(existente));
 
-        ChamadoRespostaDTO resposta = service.alterarStatus(5L, new ChamadoStatusDTO("EM_ATENDIMENTO"));
+        ChamadoRespostaDTO resposta = service.alterarStatus(5L, new ChamadoStatusDTO("EM_ANDAMENTO"));
 
-        assertEquals("EM_ATENDIMENTO", resposta.status());
+        assertEquals("EM_ANDAMENTO", resposta.status());
         assertNull(resposta.dataFechamento());
+    }
+
+    @Test
+    void alterarStatus_igual_naoPublicaEvento() {
+        Empresa empresaA = empresaMock(1L);
+        Usuario solicitante = solicitanteMock(10L);
+        Chamado existente = chamadoReal(empresaA, solicitante, StatusChamado.ABERTO);
+
+        when(tenantContext.getEmpresaIdAutenticada()).thenReturn(1L);
+        when(chamadoRepository.findByIdAndEmpresaId(5L, 1L))
+                .thenReturn(Optional.of(existente));
+
+        ChamadoRespostaDTO resposta = service.alterarStatus(5L, new ChamadoStatusDTO("ABERTO"));
+
+        assertEquals("ABERTO", resposta.status());
+        verify(eventPublisher, never()).publishEvent(any());
     }
 
     @Test

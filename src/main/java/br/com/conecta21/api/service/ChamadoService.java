@@ -11,48 +11,48 @@ import br.com.conecta21.api.repository.EmpresaRepository;
 import br.com.conecta21.api.repository.UsuarioRepository;
 import br.com.conecta21.api.security.TenantContext;
 import jakarta.persistence.EntityNotFoundException;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
 
-/**
- * Motor operacional de chamados (Backend C — Sprint 1 e Motor SLA — Sprint 3).
- *
- * <p>Todo acesso é escopado pela empresa do usuário autenticado, com o
- * {@code empresa_id} aplicado diretamente nas consultas JPA.
- */
 @Service
 public class ChamadoService {
 
-    @Autowired
-    private ChamadoRepository chamadoRepository;
+    private final ChamadoRepository chamadoRepository;
+    private final EmpresaRepository empresaRepository;
+    private final UsuarioRepository usuarioRepository;
+    private final TenantContext tenantContext;
+    private final AnexoChamadoService anexoChamadoService;
+    private final ApplicationEventPublisher eventPublisher;
 
-    @Autowired
-    private EmpresaRepository empresaRepository;
-
-    @Autowired
-    private UsuarioRepository usuarioRepository;
-
-    @Autowired
-    private TenantContext tenantContext;
+    public ChamadoService(
+            ChamadoRepository chamadoRepository,
+            EmpresaRepository empresaRepository,
+            UsuarioRepository usuarioRepository,
+            TenantContext tenantContext,
+            AnexoChamadoService anexoChamadoService,
+            ApplicationEventPublisher eventPublisher) {
+        this.chamadoRepository = chamadoRepository;
+        this.empresaRepository = empresaRepository;
+        this.usuarioRepository = usuarioRepository;
+        this.tenantContext = tenantContext;
+        this.anexoChamadoService = anexoChamadoService;
+        this.eventPublisher = eventPublisher;
+    }
 
     @Transactional
     public ChamadoRespostaDTO criar(ChamadoCriacaoDTO dto) {
-        Usuario solicitante = tenantContext.getUsuarioAutenticado();
-        Long empresaId = solicitante.getEmpresa().getId();
+        return criarInterno(dto, List.of());
+    }
 
-        Chamado chamado = new Chamado();
-        chamado.setEmpresa(empresaRepository.getReferenceById(empresaId));
-        chamado.setSolicitante(usuarioRepository.getReferenceById(solicitante.getId()));
-        chamado.setTitulo(dto.titulo());
-        chamado.setDescricao(dto.descricao());
-
-        chamado.setPrioridade(dto.prioridade());
-
-        return toResposta(chamadoRepository.save(chamado));
+    @Transactional
+    public ChamadoRespostaDTO criar(ChamadoCriacaoDTO dto, List<MultipartFile> arquivos) {
+        return criarInterno(dto, arquivos == null ? List.of() : arquivos);
     }
 
     @Transactional(readOnly = true)
@@ -70,18 +70,17 @@ public class ChamadoService {
 
     @Transactional
     public ChamadoRespostaDTO alterarStatus(Long id, ChamadoStatusDTO dto) {
-        StatusChamado novoStatus;
-
-        try {
-            novoStatus = StatusChamado.valueOf(dto.status().trim().toUpperCase());
-        } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Status inválido. Valores aceitos: ABERTO, EM_ANDAMENTO, RESOLVIDO, EM_ATRASO");
-        }
+        StatusChamado novoStatus = converterStatus(dto.status());
 
         Chamado chamado = buscarNoTenant(id);
-        chamado.setStatus(novoStatus);
+        StatusChamado statusAnterior = chamado.getStatus();
 
-        if (StatusChamado.RESOLVIDO.equals(novoStatus)) {
+        if (statusAnterior == novoStatus) {
+            return toResposta(chamado);
+        }
+
+        chamado.setStatus(novoStatus);
+        if (novoStatus == StatusChamado.RESOLVIDO) {
             if (chamado.getDataFechamento() == null) {
                 chamado.setDataFechamento(LocalDateTime.now());
             }
@@ -89,7 +88,53 @@ public class ChamadoService {
             chamado.setDataFechamento(null);
         }
 
+        eventPublisher.publishEvent(new ChamadoStatusAlteradoEvent(
+                chamado.getId(),
+                chamado.getTitulo(),
+                chamado.getSolicitante().getEmail(),
+                chamado.getSolicitante().getNome(),
+                statusAnterior,
+                novoStatus
+        ));
+
         return toResposta(chamado);
+    }
+
+    private ChamadoRespostaDTO criarInterno(ChamadoCriacaoDTO dto, List<MultipartFile> arquivos) {
+        Usuario solicitante = tenantContext.getUsuarioAutenticado();
+        Long empresaId = solicitante.getEmpresa().getId();
+
+        Chamado chamado = new Chamado();
+        chamado.setEmpresa(empresaRepository.getReferenceById(empresaId));
+        chamado.setSolicitante(usuarioRepository.getReferenceById(solicitante.getId()));
+        chamado.setTitulo(dto.titulo());
+        chamado.setDescricao(dto.descricao());
+        chamado.setStatus(StatusChamado.ABERTO);
+
+        Chamado salvo = chamadoRepository.save(chamado);
+        anexoChamadoService.salvarAnexos(salvo, arquivos);
+
+        return toResposta(salvo);
+    }
+
+    private StatusChamado converterStatus(String status) {
+        String normalizado = status.trim().toUpperCase(Locale.ROOT);
+
+        // Compatibilidade com nomes usados pela versão anterior do ChamadoService.
+        if ("EM_ATENDIMENTO".equals(normalizado)) {
+            return StatusChamado.EM_ANDAMENTO;
+        }
+        if ("FECHADO".equals(normalizado)) {
+            return StatusChamado.RESOLVIDO;
+        }
+
+        try {
+            return StatusChamado.valueOf(normalizado);
+        } catch (IllegalArgumentException ex) {
+            throw new IllegalArgumentException(
+                    "Status inválido. Valores aceitos: ABERTO, EM_ANDAMENTO, RESOLVIDO."
+            );
+        }
     }
 
     private Chamado buscarNoTenant(Long id) {
@@ -103,7 +148,7 @@ public class ChamadoService {
                 chamado.getEmpresa().getId(),
                 chamado.getTitulo(),
                 chamado.getDescricao(),
-                chamado.getStatus().name(), // Converte o Enum de volta para String no JSON de resposta
+                chamado.getStatus().name(),
                 chamado.getSolicitante().getId(),
                 chamado.getTecnico() != null ? chamado.getTecnico().getId() : null,
                 chamado.getDataAbertura(),
