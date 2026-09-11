@@ -48,3 +48,18 @@ create table `usuarios` (
                                 delete
                                 cascade
 ) engine = InnoDB auto_increment = 3 default CHARSET = utf8mb4 collate = utf8mb4_0900_ai_ci;
+
+CREATE TABLE categorias (
+                            id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                            empresa_id BIGINT NOT NULL,
+                            nome VARCHAR(50) NOT NULL,
+                            FOREIGN KEY (empresa_id) REFERENCES empresas(id)
+);
+
+CREATE TABLE chamado_categoria (
+                                   chamado_id BIGINT NOT NULL,
+                                   categoria_id BIGINT NOT NULL,
+                                   PRIMARY KEY (chamado_id, categoria_id),
+                                   FOREIGN KEY (chamado_id) REFERENCES chamados(id),
+                                   FOREIGN KEY (categoria_id) REFERENCES categorias(id)
+);
