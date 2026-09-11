@@ -1,9 +1,7 @@
 package br.com.conecta21.api.dto;
 
-import jakarta.validation.constraints.Email;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Pattern;
-import jakarta.validation.constraints.Size;
+import br.com.conecta21.api.model.PerfilUsuario;
+import jakarta.validation.constraints.*;
 
 public record UsuarioCadastroDTO(
         @NotBlank String nome,
@@ -13,6 +11,6 @@ public record UsuarioCadastroDTO(
                 regexp = "^(?=.*[0-9])(?=.*[a-z])(?=.*[A-Z])(?=.*[@#$%^&+=!]).{8,}$",
                 message = "A senha deve ter no mínimo 8 caracteres, contendo pelo menos uma letra maiúscula, uma minúscula, um número e um caractere especial"
         ) String senha,
-        @NotBlank String perfil // Ex: "ROLE_TECNICO" ou "ROLE_CLIENTE"
+        @NotNull PerfilUsuario perfil
 ) {
 }

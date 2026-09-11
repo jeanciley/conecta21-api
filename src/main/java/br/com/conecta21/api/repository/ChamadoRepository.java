@@ -26,4 +26,6 @@ public interface ChamadoRepository extends JpaRepository<Chamado, Long> {
             List<StatusChamado> status,
             LocalDateTime momentoAtual
     );
+
+    List<Chamado> findAllByEmpresaIdAndSolicitanteId(Long empresaId, Long solicitanteId);
 }

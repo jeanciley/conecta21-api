@@ -4,6 +4,7 @@ import br.com.conecta21.api.dto.ChamadoCriacaoDTO;
 import br.com.conecta21.api.dto.ChamadoRespostaDTO;
 import br.com.conecta21.api.dto.ChamadoStatusDTO;
 import br.com.conecta21.api.model.Chamado;
+import br.com.conecta21.api.model.PerfilUsuario;
 import br.com.conecta21.api.model.StatusChamado;
 import br.com.conecta21.api.model.Usuario;
 import br.com.conecta21.api.repository.ChamadoRepository;
@@ -57,7 +58,18 @@ public class ChamadoService {
 
     @Transactional(readOnly = true)
     public List<ChamadoRespostaDTO> listar() {
-        return chamadoRepository.findAllByEmpresaId(tenantContext.getEmpresaIdAutenticada())
+        Usuario usuarioLogado = tenantContext.getUsuarioAutenticado();
+        Long empresaId = tenantContext.getEmpresaIdAutenticada();
+
+        if (PerfilUsuario.USUARIO.equals(usuarioLogado.getPerfil())) {
+            return chamadoRepository.findAllByEmpresaIdAndSolicitanteId(empresaId, usuarioLogado.getId())
+                    .stream()
+                    .map(this::toResposta)
+                    .toList();
+        }
+
+        // Se for ADMIN ou TECNICO, libera a lista completa daquela empresa
+        return chamadoRepository.findAllByEmpresaId(empresaId)
                 .stream()
                 .map(this::toResposta)
                 .toList();

@@ -2,6 +2,7 @@ package br.com.conecta21.api.service;
 
 import br.com.conecta21.api.dto.EmpresaCadastroDTO;
 import br.com.conecta21.api.model.Empresa;
+import br.com.conecta21.api.model.PerfilUsuario;
 import br.com.conecta21.api.model.Usuario;
 import br.com.conecta21.api.repository.EmpresaRepository;
 import br.com.conecta21.api.repository.UsuarioRepository;
@@ -35,7 +36,7 @@ public class EmpresaService {
         admin.setNome(dto.nomeUsuario());
         admin.setSenha(passwordEncoder.encode(dto.senhaUsuario()));
         admin.setEmail(dto.emailUsuario());
-        admin.setPerfil("ADMIN");
+        admin.setPerfil(PerfilUsuario.ADMIN);
 
         usuarioRepository.save(admin);
 
