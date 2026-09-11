@@ -28,12 +28,25 @@ public class SecurityFilter extends OncePerRequestFilter {
         var tokenJWT = recuperarToken(request);
 
         if (tokenJWT != null) {
-            var subject = tokenService.getSubject(tokenJWT); // Extrai o e-mail (username) validado
-            var usuario = usuarioRepository.findByEmail(subject).orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
+            try {
+                var subject = tokenService.getSubject(tokenJWT); // Extrai o e-mail (username) validado
+                if (subject == null || subject.isBlank()) {
+                    filterChain.doFilter(request, response);
+                    return;
+                }
+                // Validação estrita de tenant (Backend C): extrai o empresa_id do claim JWT.
+                var empresaId = tokenService.getEmpresaId(tokenJWT);
+                var usuario = usuarioRepository.findByEmail(subject).orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
 
-            // Força a autenticação no contexto do Spring Security
-            var authentication = new UsernamePasswordAuthenticationToken(usuario, null, usuario.getAuthorities());
-            SecurityContextHolder.getContext().setAuthentication(authentication);
+                // Força a autenticação no contexto do Spring Security
+                var authentication = new UsernamePasswordAuthenticationToken(usuario, null, usuario.getAuthorities());
+                // Disponibiliza o tenant para o TenantContext (via details + request attribute).
+                authentication.setDetails(java.util.Map.of("empresaId", empresaId));
+                SecurityContextHolder.getContext().setAuthentication(authentication);
+                request.setAttribute("empresaId", empresaId);
+            } catch (RuntimeException ex) {
+                SecurityContextHolder.clearContext();
+            }
         }
 
         // Libera a requisição para seguir o fluxo até o Controller

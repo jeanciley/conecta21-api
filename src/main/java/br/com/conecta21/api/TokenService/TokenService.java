@@ -46,6 +46,28 @@ public class TokenService {
         }
     }
 
+    /**
+     * Extrai o {@code empresa_id} do claim JWT (Backend C — validação estrita de tenant).
+     *
+     * @throws RuntimeException se o token for inválido ou o claim estiver ausente.
+     */
+    public Long getEmpresaId(String tokenJWT) {
+        try {
+            Algorithm algoritmo = Algorithm.HMAC256(secret);
+            Long empresaId = JWT.require(algoritmo)
+                    .withIssuer("conecta21-api")
+                    .build()
+                    .verify(tokenJWT)
+                    .getClaim("empresa_id").asLong();
+            if (empresaId == null) {
+                throw new RuntimeException("Token JWT sem claim empresa_id.");
+            }
+            return empresaId;
+        } catch (JWTVerificationException exception) {
+            throw new RuntimeException("Token JWT inválido ou expirado.", exception);
+        }
+    }
+
     private Instant dataExpiracao() {
         // Define que o token expira em 2 horas
         return LocalDateTime.now().plusHours(2).toInstant(ZoneOffset.of("-03:00"));

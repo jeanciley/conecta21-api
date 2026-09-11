@@ -1,29 +1,6 @@
 create database `conecta21` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci */
 /*!80016 DEFAULT ENCRYPTION='N' */;
 
-create table `chamados` (
-                            `id` bigint not null auto_increment,
-                            `empresa_id` bigint not null,
-                            `solicitante_id` bigint not null,
-                            `tecnico_id` bigint default null,
-                            `titulo` varchar(150) not null,
-                            `descricao` text not null,
-                            `status` varchar(30) not null default 'ABERTO',
-                            `data_abertura` datetime default CURRENT_TIMESTAMP,
-                            `data_fechamento` datetime default null,
-                            `prioridade` varchar(30) not null default 'BAIXA',
-                            `data_limite_resolucao` datetime default null,
-                            primary key (`id`),
-                            key `fk_chamado_empresa` (`empresa_id`),
-                            key `fk_chamado_solicitante` (`solicitante_id`),
-                            key `fk_chamado_tecnico` (`tecnico_id`),
-                            constraint `fk_chamado_empresa` foreign key (`empresa_id`) references `empresas` (`id`) on
-                                delete
-                                cascade,
-                            constraint `fk_chamado_solicitante` foreign key (`solicitante_id`) references `usuarios` (`id`),
-                            constraint `fk_chamado_tecnico` foreign key (`tecnico_id`) references `usuarios` (`id`)
-) engine = InnoDB auto_increment = 6 default CHARSET = utf8mb4 collate = utf8mb4_0900_ai_ci;
-
 create table `empresas` (
                             `id` bigint not null auto_increment,
                             `nome_fantasia` varchar(100) not null,
@@ -48,3 +25,40 @@ create table `usuarios` (
                                 delete
                                 cascade
 ) engine = InnoDB auto_increment = 3 default CHARSET = utf8mb4 collate = utf8mb4_0900_ai_ci;
+
+create table `chamados` (
+                            `id` bigint not null auto_increment,
+                            `empresa_id` bigint not null,
+                            `solicitante_id` bigint not null,
+                            `tecnico_id` bigint default null,
+                            `titulo` varchar(150) not null,
+                            `descricao` text not null,
+                            `status` varchar(30) not null default 'ABERTO',
+                            `data_abertura` datetime default CURRENT_TIMESTAMP,
+                            `data_fechamento` datetime default null,
+                            `prioridade` varchar(30) not null default 'BAIXA',
+                            `data_limite_resolucao` datetime default null,
+                            primary key (`id`),
+                            key `fk_chamado_empresa` (`empresa_id`),
+                            key `fk_chamado_solicitante` (`solicitante_id`),
+                            key `fk_chamado_tecnico` (`tecnico_id`),
+                            constraint `fk_chamado_empresa` foreign key (`empresa_id`) references `empresas` (`id`) on
+                                delete
+                                cascade,
+                            constraint `fk_chamado_solicitante` foreign key (`solicitante_id`) references `usuarios` (`id`),
+                            constraint `fk_chamado_tecnico` foreign key (`tecnico_id`) references `usuarios` (`id`)
+) engine = InnoDB auto_increment = 6 default CHARSET = utf8mb4 collate = utf8mb4_0900_ai_ci;
+
+create table `interacoes_chamado` (
+                            `id` bigint not null auto_increment,
+                            `chamado_id` bigint not null,
+                            `autor_id` bigint not null,
+                            `mensagem` text not null,
+                            `data_criacao` datetime not null default CURRENT_TIMESTAMP,
+                            primary key (`id`),
+                            key `idx_interacao_chamado_data` (`chamado_id`, `data_criacao`),
+                            constraint `fk_interacao_chamado` foreign key (`chamado_id`) references `chamados` (`id`) on
+                                delete
+                                cascade,
+                            constraint `fk_interacao_autor` foreign key (`autor_id`) references `usuarios` (`id`)
+) engine = InnoDB default CHARSET = utf8mb4 collate = utf8mb4_0900_ai_ci;
