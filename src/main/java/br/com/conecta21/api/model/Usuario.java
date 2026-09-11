@@ -34,8 +34,9 @@ public class Usuario implements UserDetails {
     @Column(nullable = false)
     private String senha;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    private String perfil; // Ex: ADMIN, TECNICO, USUARIO
+    private PerfilUsuario perfil;
 
     @Column(name = "data_criacao", updatable = false)
     private LocalDateTime dataCriacao;
@@ -47,8 +48,8 @@ public class Usuario implements UserDetails {
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        // O Spring Security exige o prefixo "ROLE_" para mapear perfis
-        return List.of(new SimpleGrantedAuthority("ROLE_" + this.perfil));
+        // Agora extraímos o nome da constante do Enum
+        return List.of(new SimpleGrantedAuthority("ROLE_" + this.perfil.name()));
     }
 
     @Override
