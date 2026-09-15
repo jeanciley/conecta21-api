@@ -79,3 +79,13 @@ CREATE TABLE chamado_categoria (
                                    FOREIGN KEY (chamado_id) REFERENCES chamados(id),
                                    FOREIGN KEY (categoria_id) REFERENCES categorias(id)
 );
+
+CREATE TABLE avaliacoes (
+                            id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                            chamado_id BIGINT NOT NULL UNIQUE,
+                            nota INT NOT NULL,
+                            comentario TEXT NULL,
+                            data_criacao DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                            CONSTRAINT fk_avaliacao_chamado FOREIGN KEY (chamado_id)
+                                REFERENCES chamados(id) ON DELETE CASCADE
+);

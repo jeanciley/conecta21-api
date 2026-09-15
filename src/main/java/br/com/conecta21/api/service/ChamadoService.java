@@ -102,6 +102,14 @@ public class ChamadoService {
         }
 
         Chamado chamado = buscarNoTenant(id);
+
+        if (StatusChamado.RESOLVIDO.equals(novoStatus)) {
+            Usuario ator = tenantContext.getUsuarioAutenticado();
+            if (ator.getPerfil() != PerfilUsuario.TECNICO && ator.getPerfil() != PerfilUsuario.ADMIN) {
+                throw new AccessDeniedException("Apenas técnico ou administrador pode marcar o chamado como RESOLVIDO.");
+            }
+        }
+
         chamado.setStatus(novoStatus);
 
         if (StatusChamado.RESOLVIDO.equals(novoStatus)) {

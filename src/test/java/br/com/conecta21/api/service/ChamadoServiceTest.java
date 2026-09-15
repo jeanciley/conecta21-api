@@ -5,6 +5,7 @@ import br.com.conecta21.api.dto.ChamadoRespostaDTO;
 import br.com.conecta21.api.dto.ChamadoStatusDTO;
 import br.com.conecta21.api.model.Chamado;
 import br.com.conecta21.api.model.Empresa;
+import br.com.conecta21.api.model.PerfilUsuario;
 import br.com.conecta21.api.model.PrioridadeChamado;
 import br.com.conecta21.api.model.StatusChamado;
 import br.com.conecta21.api.model.Usuario;
@@ -13,6 +14,7 @@ import br.com.conecta21.api.repository.EmpresaRepository;
 import br.com.conecta21.api.repository.UsuarioRepository;
 import br.com.conecta21.api.security.TenantContext;
 import jakarta.persistence.EntityNotFoundException;
+import org.springframework.security.access.AccessDeniedException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -33,6 +35,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -58,14 +61,21 @@ class ChamadoServiceTest {
 
     private Empresa empresaMock(Long id) {
         Empresa empresa = mock(Empresa.class);
-        when(empresa.getId()).thenReturn(id);
+        lenient().when(empresa.getId()).thenReturn(id);
         return empresa;
     }
 
     private Usuario solicitanteMock(Long usuarioId) {
         Usuario solicitante = mock(Usuario.class);
-        when(solicitante.getId()).thenReturn(usuarioId);
+        lenient().when(solicitante.getId()).thenReturn(usuarioId);
         return solicitante;
+    }
+
+    private Usuario atorMock(Long usuarioId, PerfilUsuario perfil) {
+        Usuario ator = mock(Usuario.class);
+        lenient().when(ator.getId()).thenReturn(usuarioId);
+        lenient().when(ator.getPerfil()).thenReturn(perfil);
+        return ator;
     }
 
     private Chamado chamadoReal(Empresa empresa, Usuario solicitante, StatusChamado status) {
@@ -164,8 +174,10 @@ class ChamadoServiceTest {
     void alterarStatus_valido_atualizaEPreencheDataFechamento() {
         Empresa empresaA = empresaMock(1L);
         Usuario solicitante = solicitanteMock(10L);
+        Usuario tecnico = atorMock(7L, PerfilUsuario.TECNICO);
         Chamado existente = chamadoReal(empresaA, solicitante, StatusChamado.ABERTO);
         when(tenantContext.getEmpresaIdAutenticada()).thenReturn(1L);
+        when(tenantContext.getUsuarioAutenticado()).thenReturn(tecnico);
         when(chamadoRepository.findByIdAndEmpresaId(5L, 1L))
                 .thenReturn(Optional.of(existente));
 
@@ -173,6 +185,21 @@ class ChamadoServiceTest {
 
         assertEquals("RESOLVIDO", resposta.status());
         assertNotNull(resposta.dataFechamento());
+    }
+
+    @Test
+    void alterarStatus_resolvidoPorSolicitante_bloqueadoCom403() {
+        Empresa empresaA = empresaMock(1L);
+        Usuario solicitante = solicitanteMock(10L);
+        Usuario cliente = atorMock(10L, PerfilUsuario.USUARIO);
+        Chamado existente = chamadoReal(empresaA, solicitante, StatusChamado.ABERTO);
+        when(tenantContext.getEmpresaIdAutenticada()).thenReturn(1L);
+        when(tenantContext.getUsuarioAutenticado()).thenReturn(cliente);
+        when(chamadoRepository.findByIdAndEmpresaId(5L, 1L))
+                .thenReturn(Optional.of(existente));
+
+        assertThrows(AccessDeniedException.class,
+                () -> service.alterarStatus(5L, new ChamadoStatusDTO("RESOLVIDO")));
     }
 
     @Test
