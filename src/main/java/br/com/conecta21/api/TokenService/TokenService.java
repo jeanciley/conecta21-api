@@ -25,7 +25,7 @@ public class TokenService {
                     .withIssuer("conecta21-api")
                     .withSubject(usuario.getUsername())
                     .withClaim("empresa_id", usuario.getEmpresa().getId())
-                    .withClaim("perfil", usuario.getPerfil())
+                    .withClaim("perfil", usuario.getPerfil().name())
                     .withExpiresAt(dataExpiracao())
                     .sign(algoritmo);
         } catch (JWTCreationException exception) {

@@ -4,6 +4,7 @@ import br.com.conecta21.api.dto.ChamadoCriacaoDTO;
 import br.com.conecta21.api.dto.ChamadoRespostaDTO;
 import br.com.conecta21.api.dto.ChamadoStatusDTO;
 import br.com.conecta21.api.model.Chamado;
+import br.com.conecta21.api.model.PerfilUsuario;
 import br.com.conecta21.api.model.StatusChamado;
 import br.com.conecta21.api.model.Usuario;
 import br.com.conecta21.api.repository.ChamadoRepository;
