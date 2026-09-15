@@ -38,6 +38,11 @@ public class TratadorDeErros {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Acesso negado.");
     }
 
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<String> tratarErroConflitoEstado(IllegalStateException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ex.getMessage());
+    }
+
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<String> tratarErroDuplicidade(DataIntegrityViolationException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body("Conflito de dados: A informação enviada (E-mail ou CNPJ) já está cadastrada no sistema.");
