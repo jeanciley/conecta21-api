@@ -8,22 +8,27 @@ import br.com.conecta21.api.model.PerfilUsuario;
 import br.com.conecta21.api.model.StatusChamado;
 import br.com.conecta21.api.model.Usuario;
 import br.com.conecta21.api.repository.ChamadoRepository;
+import br.com.conecta21.api.repository.ChamadoSpecs;
 import br.com.conecta21.api.repository.EmpresaRepository;
 import br.com.conecta21.api.repository.UsuarioRepository;
 import br.com.conecta21.api.security.TenantContext;
 import jakarta.persistence.EntityNotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.List;
 
 /**
  * Motor operacional de chamados (Backend C — Sprint 1 e Motor SLA — Sprint 3).
  *
- * <p>Todo acesso é escopado pela empresa do usuário autenticado, com o
- * {@code empresa_id} aplicado diretamente nas consultas JPA.
+ * <p>Validação estrita de tenant: todo acesso puxa o {@code empresa_id} do
+ * token JWT (via {@link TenantContext#getEmpresaIdAutenticada()}, com validação
+ * cruzada contra o banco) e aplica esse ID diretamente nas consultas JPA.
+ * Nenhum {@code empresaId} vindo do body/query é aceito.
  */
 @Service
 public class ChamadoService {
@@ -42,37 +47,43 @@ public class ChamadoService {
 
     @Transactional
     public ChamadoRespostaDTO criar(ChamadoCriacaoDTO dto) {
+        // Fonte do tenant: claim empresa_id do JWT (TenantContext já valida contra o banco).
+        Long empresaId = tenantContext.getEmpresaIdAutenticada();
         Usuario solicitante = tenantContext.getUsuarioAutenticado();
-        Long empresaId = solicitante.getEmpresa().getId();
+        if (!empresaId.equals(solicitante.getEmpresa().getId())) {
+            throw new AccessDeniedException("Divergência de tenant entre token e usuário.");
+        }
 
         Chamado chamado = new Chamado();
         chamado.setEmpresa(empresaRepository.getReferenceById(empresaId));
         chamado.setSolicitante(usuarioRepository.getReferenceById(solicitante.getId()));
         chamado.setTitulo(dto.titulo());
         chamado.setDescricao(dto.descricao());
-
+        chamado.setStatus(StatusChamado.ABERTO);
         chamado.setPrioridade(dto.prioridade());
 
         return toResposta(chamadoRepository.save(chamado));
     }
 
     @Transactional(readOnly = true)
-    public List<ChamadoRespostaDTO> listar() {
-        Usuario usuarioLogado = tenantContext.getUsuarioAutenticado();
+    public Page<ChamadoRespostaDTO> listar(
+            String statusFiltro, Long tecnicoId,
+            LocalDateTime dataInicio, LocalDateTime dataFim,
+            Pageable pageable) {
         Long empresaId = tenantContext.getEmpresaIdAutenticada();
 
-        if (PerfilUsuario.USUARIO.equals(usuarioLogado.getPerfil())) {
-            return chamadoRepository.findAllByEmpresaIdAndSolicitanteId(empresaId, usuarioLogado.getId())
-                    .stream()
-                    .map(this::toResposta)
-                    .toList();
+        StatusChamado status = null;
+        if (statusFiltro != null && !statusFiltro.isBlank()) {
+            try {
+                status = StatusChamado.valueOf(statusFiltro.trim().toUpperCase());
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException("Status inválido. Valores aceitos: ABERTO, EM_ANDAMENTO, RESOLVIDO, EM_ATRASO");
+            }
         }
 
-        // Se for ADMIN ou TECNICO, libera a lista completa daquela empresa
-        return chamadoRepository.findAllByEmpresaId(empresaId)
-                .stream()
-                .map(this::toResposta)
-                .toList();
+        return chamadoRepository
+                .findAll(ChamadoSpecs.noTenantComFiltros(empresaId, status, tecnicoId, dataInicio, dataFim), pageable)
+                .map(this::toResposta);
     }
 
     @Transactional(readOnly = true)
