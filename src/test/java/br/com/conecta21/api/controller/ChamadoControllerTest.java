@@ -1,6 +1,8 @@
 package br.com.conecta21.api.controller;
 
 import br.com.conecta21.api.dto.ChamadoRespostaDTO;
+import br.com.conecta21.api.dto.KanbanCardDTO;
+import br.com.conecta21.api.dto.KanbanResponseDTO;
 import br.com.conecta21.api.service.ChamadoService;
 import br.com.conecta21.api.TokenService.TokenService;
 import br.com.conecta21.api.repository.UsuarioRepository;
@@ -187,6 +189,62 @@ class ChamadoControllerTest {
     @Test
     void semAutenticacao_requisicaoRejeitada() throws Exception {
         mockMvc.perform(get("/api/chamados"))
+                .andExpect(status().is4xxClientError());
+    }
+
+    private KanbanResponseDTO kanbanVazio() {
+        return new KanbanResponseDTO(List.of(), List.of(), List.of(), List.of());
+    }
+
+    private KanbanResponseDTO kanbanComUmCard() {
+        KanbanCardDTO card = new KanbanCardDTO(1L, "Impressora quebrada", "ALTA",
+                "ABERTO", 10L, null,
+                LocalDateTime.of(2026, 9, 5, 10, 0), null);
+        return new KanbanResponseDTO(List.of(card), List.of(), List.of(), List.of());
+    }
+
+    @Test
+    @WithMockUser
+    void kanban_retorna200ComQuatroColunas() throws Exception {
+        when(chamadoService.obterKanban(any(), any(), any(), any())).thenReturn(kanbanComUmCard());
+
+        mockMvc.perform(get("/api/chamados/kanban"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.abertos[0].id").value(1))
+                .andExpect(jsonPath("$.abertos[0].prioridade").value("ALTA"))
+                .andExpect(jsonPath("$.emAndamento").isEmpty())
+                .andExpect(jsonPath("$.emAtraso").isEmpty())
+                .andExpect(jsonPath("$.resolvidos").isEmpty());
+    }
+
+    @Test
+    @WithMockUser
+    void kanban_comFiltros_repassaParametrosAoService() throws Exception {
+        when(chamadoService.obterKanban(any(), any(), any(), any())).thenReturn(kanbanVazio());
+
+        mockMvc.perform(get("/api/chamados/kanban")
+                        .param("tecnicoId", "7")
+                        .param("dataInicio", "2026-09-01T00:00:00")
+                        .param("dataFim", "2026-09-10T23:59:59")
+                        .param("limite", "20"))
+                .andExpect(status().isOk());
+
+        verify(chamadoService).obterKanban(eq(7L), any(), any(), eq(20));
+    }
+
+    @Test
+    @WithMockUser
+    void kanban_limiteInvalido_retorna400() throws Exception {
+        when(chamadoService.obterKanban(any(), any(), any(), any()))
+                .thenThrow(new IllegalArgumentException("Limite inválido. Use um valor entre 1 e 200."));
+
+        mockMvc.perform(get("/api/chamados/kanban").param("limite", "9999"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void kanban_semAutenticacao_requisicaoRejeitada() throws Exception {
+        mockMvc.perform(get("/api/chamados/kanban"))
                 .andExpect(status().is4xxClientError());
     }
 }

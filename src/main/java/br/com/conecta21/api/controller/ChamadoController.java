@@ -3,6 +3,7 @@ package br.com.conecta21.api.controller;
 import br.com.conecta21.api.dto.ChamadoCriacaoDTO;
 import br.com.conecta21.api.dto.ChamadoRespostaDTO;
 import br.com.conecta21.api.dto.ChamadoStatusDTO;
+import br.com.conecta21.api.dto.KanbanResponseDTO;
 import br.com.conecta21.api.service.ChamadoService;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -54,6 +55,15 @@ public class ChamadoController {
     @GetMapping("/{id}")
     public ResponseEntity<ChamadoRespostaDTO> detalhar(@PathVariable Long id) {
         return ResponseEntity.ok(chamadoService.detalhar(id));
+    }
+
+    @GetMapping("/kanban")
+    public ResponseEntity<KanbanResponseDTO> obterKanban(
+            @RequestParam(required = false) Long tecnicoId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime dataInicio,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime dataFim,
+            @RequestParam(required = false, defaultValue = "50") Integer limite) {
+        return ResponseEntity.ok(chamadoService.obterKanban(tecnicoId, dataInicio, dataFim, limite));
     }
 
     @PatchMapping("/{id}/status")
