@@ -89,3 +89,14 @@ CREATE TABLE avaliacoes (
                             CONSTRAINT fk_avaliacao_chamado FOREIGN KEY (chamado_id)
                                 REFERENCES chamados(id) ON DELETE CASCADE
 );
+
+CREATE TABLE artigos_faq (
+                             id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                             empresa_id BIGINT NOT NULL,
+                             autor_id BIGINT NOT NULL,
+                             titulo VARCHAR(150) NOT NULL,
+                             conteudo TEXT NOT NULL,
+                             data_criacao DATETIME,
+                             FOREIGN KEY (empresa_id) REFERENCES empresas(id),
+                             FOREIGN KEY (autor_id) REFERENCES usuarios(id)
+);
