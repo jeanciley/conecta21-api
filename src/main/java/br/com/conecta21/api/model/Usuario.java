@@ -41,6 +41,15 @@ public class Usuario implements UserDetails {
     @Column(name = "data_criacao", updatable = false)
     private LocalDateTime dataCriacao;
 
+    @Column(name = "avatar_nome_original", length = 255)
+    private String avatarNomeOriginal;
+
+    @Column(name = "avatar_tipo_mime", length = 120)
+    private String avatarTipoMime;
+
+    @Column(name = "avatar_caminho_relativo", length = 500)
+    private String avatarCaminhoRelativo;
+
     @PrePersist
     protected void onCreate() {
         this.dataCriacao = LocalDateTime.now();
