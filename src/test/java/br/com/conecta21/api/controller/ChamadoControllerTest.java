@@ -110,7 +110,7 @@ class ChamadoControllerTest {
     @Test
     @WithMockUser
     void listar_retorna200Paginado() throws Exception {
-        when(chamadoService.listar(any(), any(), any(), any(), any()))
+        when(chamadoService.listar(any(), any(), any(), any(), any(), any()))
                 .thenReturn(new PageImpl<>(List.of(resposta(1L, 1L)), PageRequest.of(0, 20), 1));
 
         mockMvc.perform(get("/api/chamados"))
@@ -122,7 +122,7 @@ class ChamadoControllerTest {
     @Test
     @WithMockUser
     void listar_comFiltros_repassaParametrosAoService() throws Exception {
-        when(chamadoService.listar(any(), any(), any(), any(), any()))
+        when(chamadoService.listar(any(), any(), any(), any(), any(), any()))
                 .thenReturn(new PageImpl<>(List.of(resposta(1L, 1L)), PageRequest.of(0, 20), 1));
 
         mockMvc.perform(get("/api/chamados")
@@ -133,13 +133,13 @@ class ChamadoControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].empresaId").value(1));
 
-        verify(chamadoService).listar(eq("ABERTO"), eq(7L), any(), any(), any());
+        verify(chamadoService).listar(eq("ABERTO"), eq(7L), any(), any(), any(), any());
     }
 
     @Test
     @WithMockUser
     void listar_statusInvalido_retorna400() throws Exception {
-        when(chamadoService.listar(any(), any(), any(), any(), any()))
+        when(chamadoService.listar(any(), any(), any(), any(), any(), any()))
                 .thenThrow(new IllegalArgumentException("Status inválido. Valores aceitos: ABERTO, EM_ANDAMENTO, RESOLVIDO, EM_ATRASO"));
 
         mockMvc.perform(get("/api/chamados").param("status", "INVENTADO"))

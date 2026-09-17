@@ -99,7 +99,8 @@ public class ChamadoService {
             String statusFiltro, Long tecnicoId,
             LocalDateTime dataInicio, LocalDateTime dataFim,
             Pageable pageable) {
-        Long empresaId = tenantContext.getEmpresaIdAutenticada();
+        return listar(statusFiltro, tecnicoId, dataInicio, dataFim, null, pageable);
+    }
 
         StatusChamado status = null;
         if (statusFiltro != null && !statusFiltro.isBlank()) {
@@ -108,6 +109,20 @@ public class ChamadoService {
             } catch (IllegalArgumentException e) {
                 throw new IllegalArgumentException("Status inválido. Valores aceitos: ABERTO, EM_ANDAMENTO, RESOLVIDO, EM_ATRASO");
             }
+        }
+
+        if (busca != null && !busca.isBlank()) {
+            Pageable paginaSemOrdenacaoExterna = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
+            return chamadoRepository
+                    .pesquisarFullText(
+                            empresaId,
+                            busca.trim(),
+                            status != null ? status.name() : null,
+                            tecnicoId,
+                            dataInicio,
+                            dataFim,
+                            paginaSemOrdenacaoExterna)
+                    .map(this::toResposta);
         }
 
         return chamadoRepository
