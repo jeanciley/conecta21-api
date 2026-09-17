@@ -27,7 +27,6 @@ public class TratadorDeErros {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Credenciais inválidas. Verifique seu e-mail e senha.");
     }
 
-
     @ExceptionHandler(AuthenticationException.class)
     public ResponseEntity<String> tratarErroAutenticacao() {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Falha na autenticação. Faça login novamente.");

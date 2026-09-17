@@ -23,7 +23,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
-import java.util.List;
 
 /**
  * Motor operacional de chamados.
@@ -31,6 +30,10 @@ import java.util.List;
  * <p>Todo acesso mantém a trava multi-tenant baseada no empresa_id do JWT,
  * validado pelo {@link TenantContext}. Nenhum empresaId recebido do cliente
  * é usado para autorizar acesso.</p>
+ * <p>Validação estrita de tenant: todo acesso puxa o {@code empresa_id} do
+ * token JWT (via {@link TenantContext#getEmpresaIdAutenticada()}, com validação
+ * cruzada contra o banco) e aplica esse ID diretamente nas consultas JPA.
+ * Nenhum {@code empresaId} vindo do body/query é aceito.
  */
 @Service
 public class ChamadoService {
@@ -90,7 +93,14 @@ public class ChamadoService {
             Pageable pageable) {
         Long empresaId = tenantContext.getEmpresaIdAutenticada();
 
-        StatusChamado status = converterStatusOpcional(statusFiltro);
+        StatusChamado status = null;
+        if (statusFiltro != null && !statusFiltro.isBlank()) {
+            try {
+                status = StatusChamado.valueOf(statusFiltro.trim().toUpperCase());
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException("Status inválido. Valores aceitos: ABERTO, EM_ANDAMENTO, RESOLVIDO, EM_ATRASO");
+            }
+        }
 
         return chamadoRepository
                 .findAll(ChamadoSpecs.noTenantComFiltros(empresaId, status, tecnicoId, dataInicio, dataFim), pageable)
@@ -111,6 +121,15 @@ public class ChamadoService {
         if (statusAnterior == novoStatus) {
             return toResposta(chamado);
         }
+
+        if (StatusChamado.RESOLVIDO.equals(novoStatus)) {
+            Usuario ator = tenantContext.getUsuarioAutenticado();
+            if (ator.getPerfil() != PerfilUsuario.TECNICO && ator.getPerfil() != PerfilUsuario.ADMIN) {
+                throw new AccessDeniedException("Apenas técnico ou administrador pode marcar o chamado como RESOLVIDO.");
+            }
+        }
+
+        Chamado chamado = buscarNoTenant(id);
 
         if (StatusChamado.RESOLVIDO.equals(novoStatus)) {
             Usuario ator = tenantContext.getUsuarioAutenticado();
