@@ -3,6 +3,8 @@ package br.com.conecta21.api.service;
 import br.com.conecta21.api.dto.ChamadoCriacaoDTO;
 import br.com.conecta21.api.dto.ChamadoRespostaDTO;
 import br.com.conecta21.api.dto.ChamadoStatusDTO;
+import br.com.conecta21.api.dto.KanbanCardDTO;
+import br.com.conecta21.api.dto.KanbanResponseDTO;
 import br.com.conecta21.api.model.Chamado;
 import br.com.conecta21.api.model.PerfilUsuario;
 import br.com.conecta21.api.model.StatusChamado;
@@ -16,13 +18,16 @@ import jakarta.persistence.EntityNotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * Motor operacional de chamados.
@@ -37,6 +42,9 @@ import java.time.LocalDateTime;
  */
 @Service
 public class ChamadoService {
+
+    private static final int LIMITE_KANBAN_PADRAO = 50;
+    private static final int LIMITE_KANBAN_MAXIMO = 200;
 
     @Autowired
     private ChamadoRepository chamadoRepository;
@@ -112,6 +120,34 @@ public class ChamadoService {
         return toResposta(buscarNoTenant(id));
     }
 
+    /**
+     * Motor Kanban (Backend C): devolve os chamados do tenant já agrupados
+     * nas 4 colunas do quadro, com limite por coluna para não trazer o
+     * histórico completo de resolvidos.
+     */
+    @Transactional(readOnly = true)
+    public KanbanResponseDTO obterKanban(
+            Long tecnicoId,
+            LocalDateTime dataInicio, LocalDateTime dataFim,
+            Integer limite) {
+        Long empresaId = tenantContext.getEmpresaIdAutenticada();
+
+        int porColuna = limite != null ? limite : LIMITE_KANBAN_PADRAO;
+        if (porColuna < 1 || porColuna > LIMITE_KANBAN_MAXIMO) {
+            throw new IllegalArgumentException(
+                    "Limite inválido. Use um valor entre 1 e " + LIMITE_KANBAN_MAXIMO + ".");
+        }
+
+        Pageable paginaColuna = PageRequest.of(
+                0, porColuna, Sort.by(Sort.Direction.DESC, "dataAbertura"));
+
+        return new KanbanResponseDTO(
+                buscarColuna(empresaId, StatusChamado.ABERTO, tecnicoId, dataInicio, dataFim, paginaColuna),
+                buscarColuna(empresaId, StatusChamado.EM_ANDAMENTO, tecnicoId, dataInicio, dataFim, paginaColuna),
+                buscarColuna(empresaId, StatusChamado.EM_ATRASO, tecnicoId, dataInicio, dataFim, paginaColuna),
+                buscarColuna(empresaId, StatusChamado.RESOLVIDO, tecnicoId, dataInicio, dataFim, paginaColuna));
+    }
+
     @Transactional
     public ChamadoRespostaDTO alterarStatus(Long id, ChamadoStatusDTO dto) {
         StatusChamado novoStatus = converterStatusObrigatorio(dto.status());
@@ -181,6 +217,27 @@ public class ChamadoService {
     private Chamado buscarNoTenant(Long id) {
         return chamadoRepository.findByIdAndEmpresaId(id, tenantContext.getEmpresaIdAutenticada())
                 .orElseThrow(() -> new EntityNotFoundException("Chamado não encontrado."));
+    }
+
+    private List<KanbanCardDTO> buscarColuna(
+            Long empresaId, StatusChamado status, Long tecnicoId,
+            LocalDateTime dataInicio, LocalDateTime dataFim, Pageable paginaColuna) {
+        return chamadoRepository
+                .findAll(ChamadoSpecs.noTenantComFiltros(empresaId, status, tecnicoId, dataInicio, dataFim), paginaColuna)
+                .map(this::toCard)
+                .getContent();
+    }
+
+    private KanbanCardDTO toCard(Chamado chamado) {
+        return new KanbanCardDTO(
+                chamado.getId(),
+                chamado.getTitulo(),
+                chamado.getPrioridade() != null ? chamado.getPrioridade().name() : null,
+                chamado.getStatus().name(),
+                chamado.getSolicitante().getId(),
+                chamado.getTecnico() != null ? chamado.getTecnico().getId() : null,
+                chamado.getDataAbertura(),
+                chamado.getDataLimiteResolucao());
     }
 
     private ChamadoRespostaDTO toResposta(Chamado chamado) {
