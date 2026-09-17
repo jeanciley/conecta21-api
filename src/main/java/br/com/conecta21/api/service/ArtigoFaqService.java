@@ -3,9 +3,11 @@ package br.com.conecta21.api.service;
 import br.com.conecta21.api.dto.ArtigoCriacaoDTO;
 import br.com.conecta21.api.dto.ArtigoRespostaDTO;
 import br.com.conecta21.api.model.ArtigoFaq;
+import br.com.conecta21.api.model.Categoria;
 import br.com.conecta21.api.model.PerfilUsuario;
 import br.com.conecta21.api.model.Usuario;
 import br.com.conecta21.api.repository.ArtigoFaqRepository;
+import br.com.conecta21.api.repository.CategoriaRepository;
 import br.com.conecta21.api.security.TenantContext;
 import jakarta.persistence.EntityNotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,13 +24,24 @@ public class ArtigoFaqService {
     @Autowired
     private TenantContext tenantContext;
 
+    @Autowired
+    private CategoriaRepository categoriaRepository;
+
     @Transactional
     public ArtigoRespostaDTO criar(ArtigoCriacaoDTO dto){
         Usuario autorLogado = tenantContext.getUsuarioAutenticado();
+        Long empresaId = autorLogado.getEmpresa().getId();
 
         if (PerfilUsuario.USUARIO.equals(autorLogado.getPerfil())){
             throw new IllegalArgumentException("Acesso negado. Apenas técnicos e administradores podem publicar artigos.");
         }
+
+        if (artigoRepository.existsByTituloIgnoreCaseAndEmpresaId(dto.titulo(), empresaId)) {
+            throw new IllegalArgumentException("Já existe um artigo com este título na sua base de conhecimento.");
+        }
+
+        Categoria categoria = categoriaRepository.findByIdAndEmpresaId(dto.categoriaId(), empresaId)
+                .orElseThrow(() -> new IllegalArgumentException("Categoria não encontrada."));
 
         ArtigoFaq artigo = new ArtigoFaq();
         artigo.setTitulo(dto.titulo());
@@ -61,6 +74,15 @@ public class ArtigoFaqService {
         return toRespostaDTO(artigo);
     }
 
+    @Transactional(readOnly = true)
+    public List<ArtigoRespostaDTO> buscarPorTermo(String termo) {
+        Long empresaId = tenantContext.getEmpresaIdAutenticada();
+
+        return artigoRepository.buscarPorTermo(empresaId, termo)
+                .stream()
+                .map(this::toRespostaDTO)
+                .toList();
+    }
 
     private ArtigoRespostaDTO toRespostaDTO(ArtigoFaq artigo) {
         return new ArtigoRespostaDTO(
@@ -69,6 +91,7 @@ public class ArtigoFaqService {
                 artigo.getConteudo(),
                 artigo.getAutor().getId(),
                 artigo.getAutor().getNome(),
+                artigo.getCategoria().getNome(),
                 artigo.getDataCriacao()
         );
     }

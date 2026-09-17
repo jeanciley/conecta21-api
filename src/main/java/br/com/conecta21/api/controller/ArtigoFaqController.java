@@ -32,7 +32,10 @@ public class ArtigoFaqController {
     }
 
     @GetMapping
-    public ResponseEntity<List<ArtigoRespostaDTO>> listar() {
+    public ResponseEntity<List<ArtigoRespostaDTO>> listar(@RequestParam(required = false) String termo) {
+        if (termo != null && !termo.trim().isEmpty()) {
+            return ResponseEntity.ok(artigoFaqService.buscarPorTermo(termo));
+        }
         return ResponseEntity.ok(artigoFaqService.listar());
     }
 

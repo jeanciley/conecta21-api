@@ -37,4 +37,8 @@ public class ArtigoFaq {
     protected void onCreate() {
         this.dataCriacao = LocalDateTime.now();
     }
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "categoria_id", nullable = false)
+    private Categoria categoria;
 }
