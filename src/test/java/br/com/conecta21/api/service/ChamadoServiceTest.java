@@ -3,6 +3,7 @@ package br.com.conecta21.api.service;
 import br.com.conecta21.api.dto.ChamadoCriacaoDTO;
 import br.com.conecta21.api.dto.ChamadoRespostaDTO;
 import br.com.conecta21.api.dto.ChamadoStatusDTO;
+import br.com.conecta21.api.dto.KanbanResponseDTO;
 import br.com.conecta21.api.model.Chamado;
 import br.com.conecta21.api.model.Empresa;
 import br.com.conecta21.api.model.PerfilUsuario;
@@ -24,6 +25,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.context.ApplicationEventPublisher;
 
@@ -39,6 +41,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -229,5 +232,52 @@ class ChamadoServiceTest {
         assertThrows(IllegalArgumentException.class,
                 () -> service.alterarStatus(5L, new ChamadoStatusDTO("INVENTADO")));
         verify(chamadoRepository, never()).findByIdAndEmpresaId(any(), any());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void obterKanban_agrupaChamadosNasQuatroColunas() {
+        Empresa empresaA = empresaMock(1L);
+        Usuario solicitante = solicitanteMock(10L);
+        when(tenantContext.getEmpresaIdAutenticada()).thenReturn(1L);
+        when(chamadoRepository.findAll(any(Specification.class), any(PageRequest.class)))
+                .thenAnswer(inv -> new PageImpl<>(List.of(
+                        chamadoReal(empresaA, solicitante, StatusChamado.ABERTO))));
+
+        KanbanResponseDTO resposta = service.obterKanban(null, null, null, 50);
+
+        verify(chamadoRepository, times(4)).findAll(any(Specification.class), any(PageRequest.class));
+        assertEquals(1, resposta.abertos().size());
+        assertEquals(1, resposta.emAndamento().size());
+        assertEquals(1, resposta.emAtraso().size());
+        assertEquals(1, resposta.resolvidos().size());
+        assertEquals("ABERTO", resposta.abertos().get(0).status());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void obterKanban_colunaVazia_retornaListaVazia() {
+        when(tenantContext.getEmpresaIdAutenticada()).thenReturn(1L);
+        when(chamadoRepository.findAll(any(Specification.class), any(PageRequest.class)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        KanbanResponseDTO resposta = service.obterKanban(7L, null, null, null);
+
+        verify(chamadoRepository, times(4)).findAll(any(Specification.class), any(PageRequest.class));
+        assertEquals(0, resposta.abertos().size());
+        assertEquals(0, resposta.emAndamento().size());
+        assertEquals(0, resposta.emAtraso().size());
+        assertEquals(0, resposta.resolvidos().size());
+    }
+
+    @Test
+    void obterKanban_limiteInvalido_rejeitadoSemBuscarNoBanco() {
+        when(tenantContext.getEmpresaIdAutenticada()).thenReturn(1L);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> service.obterKanban(null, null, null, 0));
+        assertThrows(IllegalArgumentException.class,
+                () -> service.obterKanban(null, null, null, 201));
+        verify(chamadoRepository, never()).findAll(any(Specification.class), any(Pageable.class));
     }
 }

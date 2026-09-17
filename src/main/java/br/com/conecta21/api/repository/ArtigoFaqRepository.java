@@ -10,6 +10,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
+import java.util.List;
 
 @Repository
 public interface ArtigoFaqRepository extends JpaRepository<ArtigoFaq, Long>, JpaSpecificationExecutor<ArtigoFaq> {
@@ -39,4 +40,13 @@ public interface ArtigoFaqRepository extends JpaRepository<ArtigoFaq, Long>, Jpa
             @Param("empresaId") Long empresaId,
             @Param("busca") String busca,
             Pageable pageable);
+
+    List<ArtigoFaq> findAllByEmpresaId(Long empresaId);
+
+    @Query("SELECT a FROM ArtigoFaq a WHERE a.empresa.id = :empresaId AND " +
+            "(LOWER(a.titulo) LIKE LOWER(CONCAT('%', :termo, '%')) OR " +
+            "LOWER(a.conteudo) LIKE LOWER(CONCAT('%', :termo, '%')))")
+    List<ArtigoFaq> buscarPorTermo(@Param("empresaId") Long empresaId, @Param("termo") String termo);
+
+    boolean existsByTituloIgnoreCaseAndEmpresaId(String titulo, Long empresaId);
 }

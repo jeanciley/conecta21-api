@@ -16,6 +16,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import br.com.conecta21.api.model.Categoria;
+import br.com.conecta21.api.repository.CategoriaRepository;
+import java.util.List;
 
 @Service
 public class ArtigoFaqService {
@@ -26,49 +29,64 @@ public class ArtigoFaqService {
     @Autowired
     private TenantContext tenantContext;
 
-    @Transactional
-    public ArtigoRespostaDTO criar(ArtigoCriacaoDTO dto) {
-        Usuario autor = tenantContext.getUsuarioAutenticado();
-        Long empresaId = tenantContext.getEmpresaIdAutenticada();
+    @Autowired
+    private CategoriaRepository categoriaRepository;
 
-        if (!empresaId.equals(autor.getEmpresa().getId())) {
-            throw new AccessDeniedException("Divergência de tenant entre token e usuário.");
+    @Transactional
+    public ArtigoRespostaDTO criar(ArtigoCriacaoDTO dto){
+        Usuario autorLogado = tenantContext.getUsuarioAutenticado();
+        Long empresaId = autorLogado.getEmpresa().getId();
+
+        if (PerfilUsuario.USUARIO.equals(autorLogado.getPerfil())){
+            throw new IllegalArgumentException("Acesso negado. Apenas técnicos e administradores podem publicar artigos.");
         }
-        if (PerfilUsuario.USUARIO.equals(autor.getPerfil())) {
-            throw new AccessDeniedException("Apenas técnicos e administradores podem publicar artigos.");
+
+        if (artigoRepository.existsByTituloIgnoreCaseAndEmpresaId(dto.titulo(), empresaId)) {
+            throw new IllegalArgumentException("Já existe um artigo com este título na sua base de conhecimento.");
         }
+
+        Categoria categoria = categoriaRepository.findByIdAndEmpresaId(dto.categoriaId(), empresaId)
+                .orElseThrow(() -> new IllegalArgumentException("Categoria não encontrada."));
 
         ArtigoFaq artigo = new ArtigoFaq();
-        artigo.setTitulo(dto.titulo().trim());
-        artigo.setConteudo(dto.conteudo().trim());
-        artigo.setAutor(autor);
-        artigo.setEmpresa(autor.getEmpresa());
+        artigo.setTitulo(dto.titulo());
+        artigo.setConteudo(dto.conteudo());
+        artigo.setAutor(autorLogado);
+        artigo.setEmpresa(autorLogado.getEmpresa());
 
-        return toRespostaDTO(artigoRepository.save(artigo));
+        ArtigoFaq salvo = artigoRepository.save(artigo);
+
+        return toRespostaDTO(salvo);
     }
 
     @Transactional(readOnly = true)
-    public Page<ArtigoRespostaDTO> listar(String busca, Pageable pageable) {
+    public List<ArtigoRespostaDTO> listar() {
         Long empresaId = tenantContext.getEmpresaIdAutenticada();
 
-        if (busca != null && !busca.isBlank()) {
-            Pageable paginaSemOrdenacaoExterna = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
-            return artigoRepository
-                    .pesquisarFullText(empresaId, busca.trim(), paginaSemOrdenacaoExterna)
-                    .map(this::toRespostaDTO);
-        }
-
-        return artigoRepository
-                .findAll(ArtigoFaqSpecs.doTenant(empresaId), pageable)
-                .map(this::toRespostaDTO);
+        return artigoRepository.findAllByEmpresaId(empresaId)
+                .stream()
+                .map(this::toRespostaDTO)
+                .toList();
     }
 
     @Transactional(readOnly = true)
     public ArtigoRespostaDTO detalhar(Long id) {
         Long empresaId = tenantContext.getEmpresaIdAutenticada();
+
         ArtigoFaq artigo = artigoRepository.findByIdAndEmpresaId(id, empresaId)
-                .orElseThrow(() -> new EntityNotFoundException("Artigo não encontrado."));
+                .orElseThrow(() -> new EntityNotFoundException("Artigo não encontrado ou não pertence a esta empresa."));
+
         return toRespostaDTO(artigo);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ArtigoRespostaDTO> buscarPorTermo(String termo) {
+        Long empresaId = tenantContext.getEmpresaIdAutenticada();
+
+        return artigoRepository.buscarPorTermo(empresaId, termo)
+                .stream()
+                .map(this::toRespostaDTO)
+                .toList();
     }
 
     private ArtigoRespostaDTO toRespostaDTO(ArtigoFaq artigo) {
@@ -78,6 +96,8 @@ public class ArtigoFaqService {
                 artigo.getConteudo(),
                 artigo.getAutor().getId(),
                 artigo.getAutor().getNome(),
-                artigo.getDataCriacao());
+                artigo.getCategoria().getNome(),
+                artigo.getDataCriacao()
+        );
     }
 }
