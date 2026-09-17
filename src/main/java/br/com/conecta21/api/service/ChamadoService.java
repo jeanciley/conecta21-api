@@ -4,46 +4,54 @@ import br.com.conecta21.api.dto.ChamadoCriacaoDTO;
 import br.com.conecta21.api.dto.ChamadoRespostaDTO;
 import br.com.conecta21.api.dto.ChamadoStatusDTO;
 import br.com.conecta21.api.model.Chamado;
+import br.com.conecta21.api.model.PerfilUsuario;
 import br.com.conecta21.api.model.StatusChamado;
 import br.com.conecta21.api.model.Usuario;
 import br.com.conecta21.api.repository.ChamadoRepository;
+import br.com.conecta21.api.repository.ChamadoSpecs;
 import br.com.conecta21.api.repository.EmpresaRepository;
 import br.com.conecta21.api.repository.UsuarioRepository;
 import br.com.conecta21.api.security.TenantContext;
 import jakarta.persistence.EntityNotFoundException;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Locale;
 
+/**
+ * Motor operacional de chamados.
+ *
+ * <p>Todo acesso mantém a trava multi-tenant baseada no empresa_id do JWT,
+ * validado pelo {@link TenantContext}. Nenhum empresaId recebido do cliente
+ * é usado para autorizar acesso.</p>
+ */
 @Service
 public class ChamadoService {
 
-    private final ChamadoRepository chamadoRepository;
-    private final EmpresaRepository empresaRepository;
-    private final UsuarioRepository usuarioRepository;
-    private final TenantContext tenantContext;
-    private final AnexoChamadoService anexoChamadoService;
-    private final ApplicationEventPublisher eventPublisher;
+    @Autowired
+    private ChamadoRepository chamadoRepository;
 
-    public ChamadoService(
-            ChamadoRepository chamadoRepository,
-            EmpresaRepository empresaRepository,
-            UsuarioRepository usuarioRepository,
-            TenantContext tenantContext,
-            AnexoChamadoService anexoChamadoService,
-            ApplicationEventPublisher eventPublisher) {
-        this.chamadoRepository = chamadoRepository;
-        this.empresaRepository = empresaRepository;
-        this.usuarioRepository = usuarioRepository;
-        this.tenantContext = tenantContext;
-        this.anexoChamadoService = anexoChamadoService;
-        this.eventPublisher = eventPublisher;
-    }
+    @Autowired
+    private EmpresaRepository empresaRepository;
+
+    @Autowired
+    private UsuarioRepository usuarioRepository;
+
+    @Autowired
+    private TenantContext tenantContext;
+
+    @Autowired
+    private AnexoChamadoService anexoChamadoService;
+
+    @Autowired
+    private ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public ChamadoRespostaDTO criar(ChamadoCriacaoDTO dto) {
@@ -55,12 +63,38 @@ public class ChamadoService {
         return criarInterno(dto, arquivos == null ? List.of() : arquivos);
     }
 
+    private ChamadoRespostaDTO criarInterno(ChamadoCriacaoDTO dto, List<MultipartFile> arquivos) {
+        Long empresaId = tenantContext.getEmpresaIdAutenticada();
+        Usuario solicitante = tenantContext.getUsuarioAutenticado();
+        if (!empresaId.equals(solicitante.getEmpresa().getId())) {
+            throw new AccessDeniedException("Divergência de tenant entre token e usuário.");
+        }
+
+        Chamado chamado = new Chamado();
+        chamado.setEmpresa(empresaRepository.getReferenceById(empresaId));
+        chamado.setSolicitante(usuarioRepository.getReferenceById(solicitante.getId()));
+        chamado.setTitulo(dto.titulo());
+        chamado.setDescricao(dto.descricao());
+        chamado.setStatus(StatusChamado.ABERTO);
+        chamado.setPrioridade(dto.prioridade());
+
+        Chamado salvo = chamadoRepository.save(chamado);
+        anexoChamadoService.salvarAnexos(salvo, arquivos);
+        return toResposta(salvo);
+    }
+
     @Transactional(readOnly = true)
-    public List<ChamadoRespostaDTO> listar() {
-        return chamadoRepository.findAllByEmpresaId(tenantContext.getEmpresaIdAutenticada())
-                .stream()
-                .map(this::toResposta)
-                .toList();
+    public Page<ChamadoRespostaDTO> listar(
+            String statusFiltro, Long tecnicoId,
+            LocalDateTime dataInicio, LocalDateTime dataFim,
+            Pageable pageable) {
+        Long empresaId = tenantContext.getEmpresaIdAutenticada();
+
+        StatusChamado status = converterStatusOpcional(statusFiltro);
+
+        return chamadoRepository
+                .findAll(ChamadoSpecs.noTenantComFiltros(empresaId, status, tecnicoId, dataInicio, dataFim), pageable)
+                .map(this::toResposta);
     }
 
     @Transactional(readOnly = true)
@@ -70,8 +104,7 @@ public class ChamadoService {
 
     @Transactional
     public ChamadoRespostaDTO alterarStatus(Long id, ChamadoStatusDTO dto) {
-        StatusChamado novoStatus = converterStatus(dto.status());
-
+        StatusChamado novoStatus = converterStatusObrigatorio(dto.status());
         Chamado chamado = buscarNoTenant(id);
         StatusChamado statusAnterior = chamado.getStatus();
 
@@ -79,8 +112,16 @@ public class ChamadoService {
             return toResposta(chamado);
         }
 
+        if (StatusChamado.RESOLVIDO.equals(novoStatus)) {
+            Usuario ator = tenantContext.getUsuarioAutenticado();
+            if (ator.getPerfil() != PerfilUsuario.TECNICO && ator.getPerfil() != PerfilUsuario.ADMIN) {
+                throw new AccessDeniedException("Apenas técnico ou administrador pode marcar o chamado como RESOLVIDO.");
+            }
+        }
+
         chamado.setStatus(novoStatus);
-        if (novoStatus == StatusChamado.RESOLVIDO) {
+
+        if (StatusChamado.RESOLVIDO.equals(novoStatus)) {
             if (chamado.getDataFechamento() == null) {
                 chamado.setDataFechamento(LocalDateTime.now());
             }
@@ -88,52 +129,33 @@ public class ChamadoService {
             chamado.setDataFechamento(null);
         }
 
+        publicarAlteracaoStatus(chamado, statusAnterior, novoStatus);
+        return toResposta(chamado);
+    }
+
+    private void publicarAlteracaoStatus(Chamado chamado, StatusChamado anterior, StatusChamado novo) {
         eventPublisher.publishEvent(new ChamadoStatusAlteradoEvent(
                 chamado.getId(),
                 chamado.getTitulo(),
                 chamado.getSolicitante().getEmail(),
                 chamado.getSolicitante().getNome(),
-                statusAnterior,
-                novoStatus
-        ));
-
-        return toResposta(chamado);
+                anterior,
+                novo));
     }
 
-    private ChamadoRespostaDTO criarInterno(ChamadoCriacaoDTO dto, List<MultipartFile> arquivos) {
-        Usuario solicitante = tenantContext.getUsuarioAutenticado();
-        Long empresaId = solicitante.getEmpresa().getId();
-
-        Chamado chamado = new Chamado();
-        chamado.setEmpresa(empresaRepository.getReferenceById(empresaId));
-        chamado.setSolicitante(usuarioRepository.getReferenceById(solicitante.getId()));
-        chamado.setTitulo(dto.titulo());
-        chamado.setDescricao(dto.descricao());
-        chamado.setStatus(StatusChamado.ABERTO);
-
-        Chamado salvo = chamadoRepository.save(chamado);
-        anexoChamadoService.salvarAnexos(salvo, arquivos);
-
-        return toResposta(salvo);
+    private StatusChamado converterStatusOpcional(String status) {
+        if (status == null || status.isBlank()) {
+            return null;
+        }
+        return converterStatusObrigatorio(status);
     }
 
-    private StatusChamado converterStatus(String status) {
-        String normalizado = status.trim().toUpperCase(Locale.ROOT);
-
-        // Compatibilidade com nomes usados pela versão anterior do ChamadoService.
-        if ("EM_ATENDIMENTO".equals(normalizado)) {
-            return StatusChamado.EM_ANDAMENTO;
-        }
-        if ("FECHADO".equals(normalizado)) {
-            return StatusChamado.RESOLVIDO;
-        }
-
+    private StatusChamado converterStatusObrigatorio(String status) {
         try {
-            return StatusChamado.valueOf(normalizado);
-        } catch (IllegalArgumentException ex) {
+            return StatusChamado.valueOf(status.trim().toUpperCase());
+        } catch (IllegalArgumentException | NullPointerException e) {
             throw new IllegalArgumentException(
-                    "Status inválido. Valores aceitos: ABERTO, EM_ANDAMENTO, RESOLVIDO."
-            );
+                    "Status inválido. Valores aceitos: ABERTO, EM_ANDAMENTO, RESOLVIDO, EM_ATRASO");
         }
     }
 

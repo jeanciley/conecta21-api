@@ -40,8 +40,8 @@ public class AnexoChamado {
 
     @PrePersist
     protected void onCreate() {
-        if (this.dataUpload == null) {
-            this.dataUpload = LocalDateTime.now();
+        if (dataUpload == null) {
+            dataUpload = LocalDateTime.now();
         }
     }
 }

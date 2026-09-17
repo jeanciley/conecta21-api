@@ -50,7 +50,6 @@ public class NotificacaoEmailService {
             mailSender.send(mensagem);
             log.info("Notificação do chamado {} enviada para {}", evento.chamadoId(), evento.emailSolicitante());
         } catch (MailException ex) {
-            // O envio é assíncrono e não deve desfazer a alteração de status já confirmada no banco.
             log.error("Falha ao enviar notificação do chamado {} para {}",
                     evento.chamadoId(), evento.emailSolicitante(), ex);
         }

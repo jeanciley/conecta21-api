@@ -32,5 +32,5 @@ build/
 ### VS Code ###
 .vscode/
 
-### Arquivos enviados em runtime ###
-uploads/
+### Arquivos enviados pela aplicação ###
+/uploads/
