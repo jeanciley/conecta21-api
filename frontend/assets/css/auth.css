@@ -1,0 +1,516 @@
+/* ========================================
+   PÁGINAS DE AUTENTICAÇÃO
+======================================== */
+
+.auth-page {
+    min-height: 100vh;
+    background-color: #f8fafc;
+}
+
+
+/* ========================================
+   CONTAINER PRINCIPAL
+======================================== */
+
+.auth-container {
+    min-height: 100vh;
+
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+}
+
+
+/* ========================================
+   INFORMAÇÕES
+======================================== */
+
+.auth-info {
+    display: flex;
+    flex-direction: column;
+
+    padding: 50px;
+
+    background-color: #0f172a;
+    color: white;
+}
+
+.auth-logo {
+    color: white;
+}
+
+.auth-info-content {
+    max-width: 540px;
+
+    margin: auto;
+}
+
+.auth-info .section-label {
+    color: #60a5fa;
+}
+
+.auth-info h1 {
+    margin-bottom: 24px;
+
+    font-size: clamp(42px, 4vw, 58px);
+    line-height: 1.05;
+    letter-spacing: -2px;
+}
+
+.auth-info-content > p {
+    max-width: 500px;
+
+    margin-bottom: 35px;
+
+    color: #cbd5e1;
+
+    font-size: 17px;
+}
+
+
+/* ========================================
+   BENEFÍCIOS
+======================================== */
+
+.auth-benefits {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.auth-benefit {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+
+    color: #e2e8f0;
+
+    font-size: 15px;
+}
+
+.benefit-icon {
+    width: 25px;
+    height: 25px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    border-radius: 50%;
+
+    background-color: #2563eb;
+    color: white;
+
+    font-size: 13px;
+    font-weight: bold;
+}
+
+
+/* ========================================
+   ÁREA DO FORMULÁRIO
+======================================== */
+
+.auth-form-section {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    padding: 50px 30px;
+
+    background-color: white;
+}
+
+.auth-form-container {
+    width: 100%;
+    max-width: 470px;
+}
+
+
+/* ========================================
+   CABEÇALHO DO FORMULÁRIO
+======================================== */
+
+.auth-form-header {
+    margin-bottom: 32px;
+}
+
+.auth-form-header h2 {
+    margin-bottom: 8px;
+
+    color: #0f172a;
+
+    font-size: 32px;
+    line-height: 1.2;
+}
+
+.auth-form-header p {
+    color: #64748b;
+}
+
+
+/* ========================================
+   FORMULÁRIO
+======================================== */
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+
+    margin-bottom: 7px;
+
+    color: #334155;
+
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.form-group input {
+    width: 100%;
+    height: 48px;
+
+    padding: 0 14px;
+
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+
+    background-color: white;
+
+    color: #0f172a;
+
+    font-family: inherit;
+    font-size: 15px;
+
+    outline: none;
+
+    transition:
+        border-color 0.2s ease,
+        box-shadow 0.2s ease;
+}
+
+.form-group input::placeholder {
+    color: #94a3b8;
+}
+
+.form-group input:focus {
+    border-color: #2563eb;
+
+    box-shadow:
+        0 0 0 3px rgba(37, 99, 235, 0.10);
+}
+
+
+/* ========================================
+   AJUDA E ERROS
+======================================== */
+
+.form-help {
+    display: block;
+
+    margin-top: 6px;
+
+    color: #64748b;
+
+    font-size: 12px;
+}
+
+.form-error {
+    display: block;
+
+    min-height: 18px;
+
+    margin-top: 5px;
+
+    color: #dc2626;
+
+    font-size: 12px;
+}
+
+
+/* INPUT COM ERRO */
+
+.input-error {
+    border-color: #dc2626 !important;
+
+    background-color: #fef2f2 !important;
+}
+
+
+/* INPUT VÁLIDO */
+
+.input-success {
+    border-color: #16a34a !important;
+}
+
+
+/* ========================================
+   TERMOS
+======================================== */
+
+.terms-group {
+    margin: 5px 0 20px;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+
+    color: #475569;
+
+    font-size: 13px;
+
+    cursor: pointer;
+}
+
+.checkbox-label input {
+    width: 17px;
+    height: 17px;
+
+    margin-top: 1px;
+
+    accent-color: #2563eb;
+
+    cursor: pointer;
+}
+
+
+/* ========================================
+   BOTÃO DE CADASTRO
+======================================== */
+
+.auth-submit {
+    width: 100%;
+    height: 50px;
+
+    border: none;
+
+    font-family: inherit;
+    font-size: 15px;
+}
+
+.auth-submit:disabled {
+    background-color: #94a3b8;
+
+    cursor: not-allowed;
+
+    transform: none;
+}
+
+
+/* ========================================
+   RODAPÉ DO FORMULÁRIO
+======================================== */
+
+.auth-footer {
+    display: flex;
+    justify-content: center;
+    gap: 5px;
+
+    margin-top: 24px;
+
+    color: #64748b;
+
+    font-size: 14px;
+}
+
+.auth-footer a {
+    color: #2563eb;
+    font-weight: 600;
+}
+
+.auth-footer a:hover {
+    color: #1d4ed8;
+}
+
+
+/* ========================================
+   VOLTAR
+======================================== */
+
+.back-link {
+    display: block;
+
+    margin-top: 25px;
+
+    text-align: center;
+
+    color: #64748b;
+
+    font-size: 13px;
+}
+
+.back-link:hover {
+    color: #2563eb;
+}
+
+
+/* ========================================
+   RESPONSIVIDADE
+======================================== */
+
+@media (max-width: 900px) {
+
+    .auth-container {
+        grid-template-columns: 1fr;
+    }
+
+    .auth-info {
+        display: none;
+    }
+
+    .auth-form-section {
+        min-height: 100vh;
+    }
+
+}
+
+
+@media (max-width: 500px) {
+
+    .auth-form-section {
+        padding: 35px 18px;
+    }
+
+    .auth-form-header h2 {
+        font-size: 28px;
+    }
+
+    /* =========================================
+   LOGIN
+========================================= */
+
+.password-wrapper {
+    position: relative;
+    width: 100%;
+}
+
+.password-wrapper input {
+    padding-right: 80px;
+}
+
+.toggle-password {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+
+    border: none;
+    background: transparent;
+
+    color: var(--primary);
+
+    font-size: 0.85rem;
+    font-weight: 600;
+
+    cursor: pointer;
+}
+
+.toggle-password:hover {
+    text-decoration: underline;
+}
+
+.login-options {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    gap: 15px;
+
+    margin-top: 8px;
+    margin-bottom: 20px;
+
+    font-size: 0.9rem;
+}
+
+.checkbox-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    cursor: pointer;
+}
+
+.checkbox-container input {
+    width: auto;
+    cursor: pointer;
+}
+
+.login-options a {
+    color: var(--primary);
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.login-options a:hover {
+    text-decoration: underline;
+}
+
+.login-message {
+    display: none;
+
+    padding: 12px 14px;
+
+    margin-bottom: 16px;
+
+    border-radius: 8px;
+
+    font-size: 0.9rem;
+}
+
+.login-message.error {
+    display: block;
+
+    background-color: #fee2e2;
+    color: #b91c1c;
+}
+
+.login-message.success {
+    display: block;
+
+    background-color: #dcfce7;
+    color: #15803d;
+}
+
+.auth-submit {
+    width: 100%;
+}
+
+.auth-switch {
+    text-align: center;
+
+    margin-top: 24px;
+
+    font-size: 0.9rem;
+
+    color: var(--text-light);
+}
+
+.auth-switch a {
+    color: var(--primary);
+
+    font-weight: 600;
+
+    text-decoration: none;
+}
+
+.auth-switch a:hover {
+    text-decoration: underline;
+}
+
+
+/* =========================================
+   RESPONSIVIDADE LOGIN
+========================================= */
+
+@media (max-width: 600px) {
+
+    .login-options {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
+
+
+}
