@@ -1,3 +1,104 @@
+CREATE DATABASE IF NOT EXISTS `conecta21`
+    DEFAULT CHARACTER SET utf8mb4
+    COLLATE utf8mb4_0900_ai_ci;
+
+USE `conecta21`;
+
+CREATE TABLE `empresas` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `nome_fantasia` VARCHAR(100) NOT NULL,
+    `cnpj` VARCHAR(18) DEFAULT NULL,
+    `data_cadastro` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_empresas_cnpj` (`cnpj`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `usuarios` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `empresa_id` BIGINT NOT NULL,
+    `nome` VARCHAR(100) NOT NULL,
+    `email` VARCHAR(100) NOT NULL,
+    `senha` VARCHAR(255) NOT NULL,
+    `perfil` VARCHAR(20) NOT NULL,
+    `data_criacao` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_usuarios_email` (`email`),
+    KEY `idx_usuarios_empresa` (`empresa_id`),
+    CONSTRAINT `fk_usuario_empresa`
+        FOREIGN KEY (`empresa_id`) REFERENCES `empresas` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `chamados` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `empresa_id` BIGINT NOT NULL,
+    `solicitante_id` BIGINT NOT NULL,
+    `tecnico_id` BIGINT DEFAULT NULL,
+    `titulo` VARCHAR(150) NOT NULL,
+    `descricao` TEXT NOT NULL,
+    `status` VARCHAR(30) NOT NULL DEFAULT 'ABERTO',
+    `data_abertura` DATETIME DEFAULT CURRENT_TIMESTAMP,
+    `data_fechamento` DATETIME DEFAULT NULL,
+    `prioridade` VARCHAR(30) NOT NULL DEFAULT 'BAIXA',
+    `data_limite_resolucao` DATETIME DEFAULT NULL,
+    PRIMARY KEY (`id`),
+    KEY `idx_chamados_empresa` (`empresa_id`),
+    KEY `idx_chamados_solicitante` (`solicitante_id`),
+    KEY `idx_chamados_tecnico` (`tecnico_id`),
+    CONSTRAINT `fk_chamado_empresa`
+        FOREIGN KEY (`empresa_id`) REFERENCES `empresas` (`id`) ON DELETE CASCADE,
+    CONSTRAINT `fk_chamado_solicitante`
+        FOREIGN KEY (`solicitante_id`) REFERENCES `usuarios` (`id`),
+    CONSTRAINT `fk_chamado_tecnico`
+        FOREIGN KEY (`tecnico_id`) REFERENCES `usuarios` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `interacoes_chamado` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `chamado_id` BIGINT NOT NULL,
+    `autor_id` BIGINT NOT NULL,
+    `mensagem` TEXT NOT NULL,
+    `data_criacao` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    KEY `idx_interacao_chamado_data` (`chamado_id`, `data_criacao`),
+    KEY `idx_interacao_autor` (`autor_id`),
+    CONSTRAINT `fk_interacao_chamado`
+        FOREIGN KEY (`chamado_id`) REFERENCES `chamados` (`id`) ON DELETE CASCADE,
+    CONSTRAINT `fk_interacao_autor`
+        FOREIGN KEY (`autor_id`) REFERENCES `usuarios` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `categorias` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `empresa_id` BIGINT NOT NULL,
+    `nome` VARCHAR(50) NOT NULL,
+    PRIMARY KEY (`id`),
+    KEY `idx_categorias_empresa` (`empresa_id`),
+    CONSTRAINT `fk_categoria_empresa`
+        FOREIGN KEY (`empresa_id`) REFERENCES `empresas` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `chamado_categoria` (
+    `chamado_id` BIGINT NOT NULL,
+    `categoria_id` BIGINT NOT NULL,
+    PRIMARY KEY (`chamado_id`, `categoria_id`),
+    KEY `idx_chamado_categoria_categoria` (`categoria_id`),
+    CONSTRAINT `fk_chamado_categoria_chamado`
+        FOREIGN KEY (`chamado_id`) REFERENCES `chamados` (`id`) ON DELETE CASCADE,
+    CONSTRAINT `fk_chamado_categoria_categoria`
+        FOREIGN KEY (`categoria_id`) REFERENCES `categorias` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `avaliacoes` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `chamado_id` BIGINT NOT NULL,
+    `nota` INT NOT NULL,
+    `comentario` TEXT NULL,
+    `data_criacao` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `uk_avaliacao_chamado` (`chamado_id`),
+    CONSTRAINT `fk_avaliacao_chamado`
+        FOREIGN KEY (`chamado_id`) REFERENCES `chamados` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 create database `conecta21` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci */
 /*!80016 DEFAULT ENCRYPTION='N' */;
 
@@ -21,9 +122,7 @@ create table `usuarios` (
                             primary key (`id`),
                             unique key `email` (`email`),
                             key `fk_usuario_empresa` (`empresa_id`),
-                            constraint `fk_usuario_empresa` foreign key (`empresa_id`) references `empresas` (`id`) on
-                                delete
-                                cascade
+                            constraint `fk_usuario_empresa` foreign key (`empresa_id`) references `empresas` (`id`) on delete cascade
 ) engine = InnoDB auto_increment = 3 default CHARSET = utf8mb4 collate = utf8mb4_0900_ai_ci;
 
 create table `chamados` (
@@ -42,28 +141,22 @@ create table `chamados` (
                             key `fk_chamado_empresa` (`empresa_id`),
                             key `fk_chamado_solicitante` (`solicitante_id`),
                             key `fk_chamado_tecnico` (`tecnico_id`),
-                            constraint `fk_chamado_empresa` foreign key (`empresa_id`) references `empresas` (`id`) on
-                                delete
-                                cascade,
+                            constraint `fk_chamado_empresa` foreign key (`empresa_id`) references `empresas` (`id`) on delete cascade,
                             constraint `fk_chamado_solicitante` foreign key (`solicitante_id`) references `usuarios` (`id`),
                             constraint `fk_chamado_tecnico` foreign key (`tecnico_id`) references `usuarios` (`id`)
 ) engine = InnoDB auto_increment = 6 default CHARSET = utf8mb4 collate = utf8mb4_0900_ai_ci;
 
 create table `interacoes_chamado` (
-                            `id` bigint not null auto_increment,
-                            `chamado_id` bigint not null,
-                            `autor_id` bigint not null,
-                            `mensagem` text not null,
-                            `data_criacao` datetime not null default CURRENT_TIMESTAMP,
-                            primary key (`id`),
-                            key `idx_interacao_chamado_data` (`chamado_id`, `data_criacao`),
-                            constraint `fk_interacao_chamado` foreign key (`chamado_id`) references `chamados` (`id`) on
-                                delete
-                                cascade,
-                            constraint `fk_interacao_autor` foreign key (`autor_id`) references `usuarios` (`id`)
+                                      `id` bigint not null auto_increment,
+                                      `chamado_id` bigint not null,
+                                      `autor_id` bigint not null,
+                                      `mensagem` text not null,
+                                      `data_criacao` datetime not null default CURRENT_TIMESTAMP,
+                                      primary key (`id`),
+                                      key `idx_interacao_chamado_data` (`chamado_id`, `data_criacao`),
+                                      constraint `fk_interacao_chamado` foreign key (`chamado_id`) references `chamados` (`id`) on delete cascade,
+                                      constraint `fk_interacao_autor` foreign key (`autor_id`) references `usuarios` (`id`)
 ) engine = InnoDB default CHARSET = utf8mb4 collate = utf8mb4_0900_ai_ci;
-                                cascade
-) engine = InnoDB auto_increment = 3 default CHARSET = utf8mb4 collate = utf8mb4_0900_ai_ci;
 
 CREATE TABLE categorias (
                             id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -86,6 +179,18 @@ CREATE TABLE avaliacoes (
                             nota INT NOT NULL,
                             comentario TEXT NULL,
                             data_criacao DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                            CONSTRAINT fk_avaliacao_chamado FOREIGN KEY (chamado_id)
-                                REFERENCES chamados(id) ON DELETE CASCADE
+                            CONSTRAINT fk_avaliacao_chamado FOREIGN KEY (chamado_id) REFERENCES chamados(id) ON DELETE CASCADE
+);
+
+CREATE TABLE artigos_faq (
+                             id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                             empresa_id BIGINT NOT NULL,
+                             autor_id BIGINT NOT NULL,
+                             categoria_id BIGINT NOT NULL,
+                             titulo VARCHAR(150) NOT NULL,
+                             conteudo TEXT NOT NULL,
+                             data_criacao DATETIME,
+                             FOREIGN KEY (empresa_id) REFERENCES empresas(id),
+                             FOREIGN KEY (autor_id) REFERENCES usuarios(id),
+                             CONSTRAINT fk_artigo_categoria FOREIGN KEY (categoria_id) REFERENCES categorias(id)
 );

@@ -4,6 +4,7 @@ import br.com.conecta21.api.dto.ChamadoRespostaDTO;
 import br.com.conecta21.api.dto.KanbanCardDTO;
 import br.com.conecta21.api.dto.KanbanResponseDTO;
 import br.com.conecta21.api.service.ChamadoService;
+import br.com.conecta21.api.service.AnexoChamadoService;
 import br.com.conecta21.api.TokenService.TokenService;
 import br.com.conecta21.api.repository.UsuarioRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -45,6 +46,9 @@ class ChamadoControllerTest {
 
     @MockBean
     private ChamadoService chamadoService;
+
+    @MockBean
+    private AnexoChamadoService anexoChamadoService;
 
     // Dependências do SecurityFilter real (carregado pelo slice): sem header
     // Authorization o filtro apenas segue a cadeia, sem interferir nos testes.
