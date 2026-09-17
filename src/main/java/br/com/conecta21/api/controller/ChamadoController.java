@@ -57,10 +57,11 @@ public class ChamadoController {
     public ResponseEntity<Page<ChamadoRespostaDTO>> listar(
             @RequestParam(required = false) String status,
             @RequestParam(required = false) Long tecnicoId,
+            @RequestParam(required = false) String busca,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime dataInicio,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime dataFim,
             @PageableDefault(size = 20, sort = "dataAbertura", direction = Sort.Direction.DESC) Pageable pageable) {
-        return ResponseEntity.ok(chamadoService.listar(status, tecnicoId, dataInicio, dataFim, pageable));
+        return ResponseEntity.ok(chamadoService.listar(status, tecnicoId, dataInicio, dataFim, busca, pageable));
     }
 
     @GetMapping("/{id}")

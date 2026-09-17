@@ -16,6 +16,7 @@ import jakarta.persistence.EntityNotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
@@ -88,9 +89,30 @@ public class ChamadoService {
             String statusFiltro, Long tecnicoId,
             LocalDateTime dataInicio, LocalDateTime dataFim,
             Pageable pageable) {
-        Long empresaId = tenantContext.getEmpresaIdAutenticada();
+        return listar(statusFiltro, tecnicoId, dataInicio, dataFim, null, pageable);
+    }
 
+    @Transactional(readOnly = true)
+    public Page<ChamadoRespostaDTO> listar(
+            String statusFiltro, Long tecnicoId,
+            LocalDateTime dataInicio, LocalDateTime dataFim,
+            String busca, Pageable pageable) {
+        Long empresaId = tenantContext.getEmpresaIdAutenticada();
         StatusChamado status = converterStatusOpcional(statusFiltro);
+
+        if (busca != null && !busca.isBlank()) {
+            Pageable paginaSemOrdenacaoExterna = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
+            return chamadoRepository
+                    .pesquisarFullText(
+                            empresaId,
+                            busca.trim(),
+                            status != null ? status.name() : null,
+                            tecnicoId,
+                            dataInicio,
+                            dataFim,
+                            paginaSemOrdenacaoExterna)
+                    .map(this::toResposta);
+        }
 
         return chamadoRepository
                 .findAll(ChamadoSpecs.noTenantComFiltros(empresaId, status, tecnicoId, dataInicio, dataFim), pageable)
