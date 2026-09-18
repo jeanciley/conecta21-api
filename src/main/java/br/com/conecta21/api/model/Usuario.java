@@ -3,6 +3,8 @@ package br.com.conecta21.api.model;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.SQLDelete;
+import org.hibernate.annotations.SQLRestriction;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -15,6 +17,8 @@ import java.util.List;
 @Setter
 @Entity
 @Table(name = "usuarios")
+@SQLDelete(sql = "UPDATE usuarios SET excluido = true WHERE id = ?")
+@SQLRestriction("excluido = false")
 public class Usuario implements UserDetails {
 
     @Id
@@ -49,6 +53,9 @@ public class Usuario implements UserDetails {
 
     @Column(name = "avatar_caminho_relativo", length = 500)
     private String avatarCaminhoRelativo;
+
+    @Column(nullable = false)
+    private boolean excluido = false;
 
     @PrePersist
     protected void onCreate() {

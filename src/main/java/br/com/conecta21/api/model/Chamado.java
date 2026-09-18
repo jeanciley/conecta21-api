@@ -3,6 +3,8 @@ package br.com.conecta21.api.model;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.SQLDelete;
+import org.hibernate.annotations.SQLRestriction;
 
 import java.time.LocalDateTime;
 
@@ -10,6 +12,10 @@ import java.time.LocalDateTime;
 @Setter
 @Entity
 @Table(name = "chamados")
+// 1. Intercepta o delete físico e transforma em update
+@SQLDelete(sql = "UPDATE chamados SET excluido = true WHERE id = ?")
+// 2. Filtra automaticamente os excluídos em todas as consultas (substitui o antigo @Where)
+@SQLRestriction("excluido = false")
 public class Chamado {
 
     @Id
@@ -54,6 +60,9 @@ public class Chamado {
 
     @Column(name = "data_limite_resolucao")
     private LocalDateTime dataLimiteResolucao;
+
+    @Column(nullable = false)
+    private boolean excluido = false;
 
     @ManyToMany
     @JoinTable(

@@ -8,7 +8,7 @@ spring:
   jpa:
     show-sql: true
     hibernate:
-      ddl-auto: validate
+      ddl-auto: update
     properties:
       hibernate:
         format_sql: true
@@ -40,3 +40,19 @@ app:
     from: ${MAIL_FROM:no-reply@conecta21.local}
   arquivos:
     diretorio: ${ARQUIVOS_DIRETORIO:uploads}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+
+scrape_configs:
+  - job_name: 'conecta21-api'
+    metrics_path: '/actuator/prometheus'
+    scrape_interval: 5s # Vai coletar dados da API a cada 5 segundos
+    static_configs:
+      - targets: ['localhost:8080'] # Ou 'localhost:8080' dependendo de como estiver rodando

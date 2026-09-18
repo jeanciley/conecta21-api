@@ -5,10 +5,6 @@ import br.com.conecta21.api.dto.ArtigoRespostaDTO;
 import br.com.conecta21.api.service.ArtigoFaqService;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
-import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
@@ -35,11 +31,14 @@ public class ArtigoFaqController {
         return ResponseEntity.created(uri).body(resposta);
     }
 
+    // CORREÇÃO: O retorno foi alterado de Page para List, e a lógica
+    // roteia para o método correto do Service dependendo se há um termo de busca.
     @GetMapping
-    public ResponseEntity<Page<ArtigoRespostaDTO>> listar(
-            @RequestParam(required = false) String busca,
-            @PageableDefault(size = 20, sort = "dataCriacao", direction = Sort.Direction.DESC) Pageable pageable) {
-        return ResponseEntity.ok(artigoFaqService.listar(busca, pageable));
+    public ResponseEntity<List<ArtigoRespostaDTO>> listar(@RequestParam(required = false) String busca) {
+        if (busca != null && !busca.isBlank()) {
+            return ResponseEntity.ok(artigoFaqService.buscarPorTermo(busca));
+        }
+        return ResponseEntity.ok(artigoFaqService.listar());
     }
 
     @GetMapping("/{id}")
