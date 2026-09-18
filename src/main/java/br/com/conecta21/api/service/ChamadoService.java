@@ -1,5 +1,6 @@
 package br.com.conecta21.api.service;
 
+import br.com.conecta21.api.aop.AuditarAcao;
 import br.com.conecta21.api.dto.ChamadoCriacaoDTO;
 import br.com.conecta21.api.dto.ChamadoRespostaDTO;
 import br.com.conecta21.api.dto.ChamadoStatusDTO;
@@ -16,6 +17,8 @@ import br.com.conecta21.api.repository.UsuarioRepository;
 import br.com.conecta21.api.security.TenantContext;
 import jakarta.persistence.EntityNotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -35,10 +38,6 @@ import java.util.List;
  * <p>Todo acesso mantém a trava multi-tenant baseada no empresa_id do JWT,
  * validado pelo {@link TenantContext}. Nenhum empresaId recebido do cliente
  * é usado para autorizar acesso.</p>
- * <p>Validação estrita de tenant: todo acesso puxa o {@code empresa_id} do
- * token JWT (via {@link TenantContext#getEmpresaIdAutenticada()}, com validação
- * cruzada contra o banco) e aplica esse ID diretamente nas consultas JPA.
- * Nenhum {@code empresaId} vindo do body/query é aceito.
  */
 @Service
 public class ChamadoService {
@@ -69,6 +68,8 @@ public class ChamadoService {
         return criarInterno(dto, List.of());
     }
 
+    @CacheEvict(value = "kanban_empresa", key = "#{@tenantContext.getEmpresaIdAutenticada()}")
+    @AuditarAcao(acao = "CRIACAO", entidade = "Chamado")
     @Transactional
     public ChamadoRespostaDTO criar(ChamadoCriacaoDTO dto, List<MultipartFile> arquivos) {
         return criarInterno(dto, arquivos == null ? List.of() : arquivos);
@@ -102,14 +103,17 @@ public class ChamadoService {
         return listar(statusFiltro, tecnicoId, dataInicio, dataFim, null, pageable);
     }
 
-        StatusChamado status = null;
-        if (statusFiltro != null && !statusFiltro.isBlank()) {
-            try {
-                status = StatusChamado.valueOf(statusFiltro.trim().toUpperCase());
-            } catch (IllegalArgumentException e) {
-                throw new IllegalArgumentException("Status inválido. Valores aceitos: ABERTO, EM_ANDAMENTO, RESOLVIDO, EM_ATRASO");
-            }
-        }
+    // CORREÇÃO: Assinatura do método e lógica inicial adicionadas
+    @Transactional(readOnly = true)
+    public Page<ChamadoRespostaDTO> listar(
+            String statusFiltro, Long tecnicoId,
+            LocalDateTime dataInicio, LocalDateTime dataFim,
+            String busca, Pageable pageable) {
+
+        Long empresaId = tenantContext.getEmpresaIdAutenticada();
+
+        // CORREÇÃO: Utilizando o helper já existente na classe para evitar redundância
+        StatusChamado status = converterStatusOpcional(statusFiltro);
 
         if (busca != null && !busca.isBlank()) {
             Pageable paginaSemOrdenacaoExterna = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
@@ -135,11 +139,7 @@ public class ChamadoService {
         return toResposta(buscarNoTenant(id));
     }
 
-    /**
-     * Motor Kanban (Backend C): devolve os chamados do tenant já agrupados
-     * nas 4 colunas do quadro, com limite por coluna para não trazer o
-     * histórico completo de resolvidos.
-     */
+    @Cacheable(value = "kanban_empresa", key = "#{@tenantContext.getEmpresaIdAutenticada()}")
     @Transactional(readOnly = true)
     public KanbanResponseDTO obterKanban(
             Long tecnicoId,
@@ -163,6 +163,8 @@ public class ChamadoService {
                 buscarColuna(empresaId, StatusChamado.RESOLVIDO, tecnicoId, dataInicio, dataFim, paginaColuna));
     }
 
+    @CacheEvict(value = "kanban_empresa", key = "#{@tenantContext.getEmpresaIdAutenticada()}")
+    @AuditarAcao(acao = "ALTERACAO_STATUS", entidade = "Chamado")
     @Transactional
     public ChamadoRespostaDTO alterarStatus(Long id, ChamadoStatusDTO dto) {
         StatusChamado novoStatus = converterStatusObrigatorio(dto.status());
@@ -173,15 +175,7 @@ public class ChamadoService {
             return toResposta(chamado);
         }
 
-        if (StatusChamado.RESOLVIDO.equals(novoStatus)) {
-            Usuario ator = tenantContext.getUsuarioAutenticado();
-            if (ator.getPerfil() != PerfilUsuario.TECNICO && ator.getPerfil() != PerfilUsuario.ADMIN) {
-                throw new AccessDeniedException("Apenas técnico ou administrador pode marcar o chamado como RESOLVIDO.");
-            }
-        }
-
-        Chamado chamado = buscarNoTenant(id);
-
+        // CORREÇÃO: Lógica duplicada de buscarNoTenant e verificação de perfil removidas.
         if (StatusChamado.RESOLVIDO.equals(novoStatus)) {
             Usuario ator = tenantContext.getUsuarioAutenticado();
             if (ator.getPerfil() != PerfilUsuario.TECNICO && ator.getPerfil() != PerfilUsuario.ADMIN) {

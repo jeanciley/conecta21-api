@@ -3,21 +3,17 @@ package br.com.conecta21.api.service;
 import br.com.conecta21.api.dto.ArtigoCriacaoDTO;
 import br.com.conecta21.api.dto.ArtigoRespostaDTO;
 import br.com.conecta21.api.model.ArtigoFaq;
+import br.com.conecta21.api.model.Categoria;
 import br.com.conecta21.api.model.PerfilUsuario;
 import br.com.conecta21.api.model.Usuario;
 import br.com.conecta21.api.repository.ArtigoFaqRepository;
-import br.com.conecta21.api.repository.ArtigoFaqSpecs;
+import br.com.conecta21.api.repository.CategoriaRepository;
 import br.com.conecta21.api.security.TenantContext;
 import jakarta.persistence.EntityNotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import br.com.conecta21.api.model.Categoria;
-import br.com.conecta21.api.repository.CategoriaRepository;
+
 import java.util.List;
 
 @Service
@@ -53,6 +49,9 @@ public class ArtigoFaqService {
         artigo.setConteudo(dto.conteudo());
         artigo.setAutor(autorLogado);
         artigo.setEmpresa(autorLogado.getEmpresa());
+
+        // CORREÇÃO: Setando a categoria validada no artigo antes de salvar
+        artigo.setCategoria(categoria);
 
         ArtigoFaq salvo = artigoRepository.save(artigo);
 
@@ -96,7 +95,8 @@ public class ArtigoFaqService {
                 artigo.getConteudo(),
                 artigo.getAutor().getId(),
                 artigo.getAutor().getNome(),
-                artigo.getCategoria().getNome(),
+                // Agora o getCategoria() não retornará nulo
+                artigo.getCategoria() != null ? artigo.getCategoria().getNome() : null,
                 artigo.getDataCriacao()
         );
     }
