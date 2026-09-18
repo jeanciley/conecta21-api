@@ -6,14 +6,9 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 public record ChamadoCriacaoDTO(
-        @NotBlank
-        @Size(max = 150)
-        String titulo,
-
-        @NotBlank
-        String descricao,
-
-        @NotNull
-        PrioridadeChamado prioridade
+        @NotBlank(message = "O título é obrigatório") String titulo,
+        @NotBlank(message = "A descrição é obrigatória") String descricao,
+        String prioridade,
+        String tipo
 ) {
 }

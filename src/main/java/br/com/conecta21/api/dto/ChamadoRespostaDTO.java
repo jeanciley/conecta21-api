@@ -11,6 +11,7 @@ public record ChamadoRespostaDTO(
         Long solicitanteId,
         Long tecnicoId,
         LocalDateTime dataAbertura,
-        LocalDateTime dataFechamento
+        LocalDateTime dataFechamento,
+        String tipo
 ) {
 }
