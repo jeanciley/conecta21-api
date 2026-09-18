@@ -2,6 +2,7 @@ package br.com.conecta21.api.repository;
 
 import br.com.conecta21.api.model.Chamado;
 import br.com.conecta21.api.model.StatusChamado;
+import br.com.conecta21.api.model.TipoChamado;
 import jakarta.persistence.criteria.Predicate;
 import org.springframework.data.jpa.domain.Specification;
 
@@ -23,15 +24,13 @@ public final class ChamadoSpecs {
     }
 
     public static Specification<Chamado> noTenantComFiltros(
-            Long empresaId,
-            StatusChamado status,
-            Long tecnicoId,
-            LocalDateTime dataInicio,
-            LocalDateTime dataFim) {
+            Long empresaId, StatusChamado status, Long tecnicoId,
+            LocalDateTime dataInicio, LocalDateTime dataFim,
+            List<TipoChamado> tipos) { // Novo parâmetro
+
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
 
-            // Cláusula principal: trava do SaaS.
             predicates.add(cb.equal(root.get("empresa").get("id"), empresaId));
 
             if (status != null) {
@@ -45,6 +44,11 @@ public final class ChamadoSpecs {
             }
             if (dataFim != null) {
                 predicates.add(cb.lessThanOrEqualTo(root.get("dataAbertura"), dataFim));
+            }
+
+            // NOVA LÓGICA: Se o front-end enviou os tipos, filtra por eles
+            if (tipos != null && !tipos.isEmpty()) {
+                predicates.add(root.get("tipo").in(tipos));
             }
 
             return cb.and(predicates.toArray(new Predicate[0]));

@@ -64,6 +64,10 @@ public class Chamado {
     @Column(nullable = false)
     private boolean excluido = false;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private TipoChamado tipo = TipoChamado.SUPORTE_EXTERNO;
+
     @ManyToMany
     @JoinTable(
             name = "chamado_categoria", // Nome da tabela intermediária que será criada no banco

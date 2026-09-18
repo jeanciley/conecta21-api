@@ -71,11 +71,14 @@ public class ChamadoController {
     public ResponseEntity<Page<ChamadoRespostaDTO>> listar(
             @RequestParam(required = false) String status,
             @RequestParam(required = false) Long tecnicoId,
-            @RequestParam(required = false) String busca,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime dataInicio,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime dataFim,
-            @PageableDefault(size = 20, sort = "dataAbertura", direction = Sort.Direction.DESC) Pageable pageable) {
-        return ResponseEntity.ok(chamadoService.listar(status, tecnicoId, dataInicio, dataFim, busca, pageable));
+            @RequestParam(required = false) String busca,
+            @RequestParam(required = false) List<String> tipos, // Novo parâmetro adicionado
+            @PageableDefault(size = 10, sort = "dataAbertura", direction = Sort.Direction.DESC) Pageable pageable) {
+
+        Page<ChamadoRespostaDTO> resposta = chamadoService.listar(status, tecnicoId, dataInicio, dataFim, busca, tipos, pageable);
+        return ResponseEntity.ok(resposta);
     }
 
     @GetMapping("/{id}")
@@ -88,8 +91,11 @@ public class ChamadoController {
             @RequestParam(required = false) Long tecnicoId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime dataInicio,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime dataFim,
-            @RequestParam(required = false, defaultValue = "50") Integer limite) {
-        return ResponseEntity.ok(chamadoService.obterKanban(tecnicoId, dataInicio, dataFim, limite));
+            @RequestParam(required = false) Integer limite,
+            @RequestParam(required = false) List<String> tipos) { // Novo parâmetro adicionado
+
+        KanbanResponseDTO resposta = chamadoService.obterKanban(tecnicoId, dataInicio, dataFim, limite, tipos);
+        return ResponseEntity.ok(resposta);
     }
 
     @PatchMapping("/{id}/status")
