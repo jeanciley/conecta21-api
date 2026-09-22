@@ -152,7 +152,7 @@ public class ChamadoService {
     }
 
     // A chave do cache agora junta o ID da empresa com os tipos solicitados
-    @Cacheable(value = "kanban_empresa", key = "#{@tenantContext.getEmpresaIdAutenticada()} + '-' + (#tiposFiltro != null ? #tiposFiltro.toString() : 'TODOS')")
+    @Cacheable(value = "kanban_empresa", key = "@tenantContext.getEmpresaIdAutenticada() + '-' + (#tiposFiltro != null ? #tiposFiltro.toString() : 'TODOS')")
     @Transactional(readOnly = true)
     public KanbanResponseDTO obterKanban(
             Long tecnicoId,
@@ -260,6 +260,7 @@ public class ChamadoService {
                 chamado.getTitulo(),
                 chamado.getPrioridade() != null ? chamado.getPrioridade().name() : null,
                 chamado.getStatus().name(),
+                chamado.getTipo().name(),
                 chamado.getSolicitante().getId(),
                 chamado.getTecnico() != null ? chamado.getTecnico().getId() : null,
                 chamado.getDataAbertura(),
