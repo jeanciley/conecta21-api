@@ -1,9 +1,6 @@
 package br.com.conecta21.api.service;
 
-import br.com.conecta21.api.dto.UsuarioCadastroDTO;
-import br.com.conecta21.api.dto.UsuarioPerfilAtualizacaoDTO;
-import br.com.conecta21.api.dto.UsuarioPerfilRespostaDTO;
-import br.com.conecta21.api.dto.UsuarioTrocaSenhaDTO;
+import br.com.conecta21.api.dto.*;
 import br.com.conecta21.api.model.Usuario;
 import br.com.conecta21.api.repository.UsuarioRepository;
 import br.com.conecta21.api.security.TenantContext;
@@ -18,8 +15,10 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 public class UsuarioService {
@@ -239,6 +238,16 @@ public class UsuarioService {
                 usuario.getEmail(),
                 usuario.getPerfil(),
                 usuario.getAvatarCaminhoRelativo() != null && !usuario.getAvatarCaminhoRelativo().isBlank());
+    }
+
+    @Transactional(readOnly = true)
+    public List<UsuarioListaDTO> listarMembrosDaEmpresa() {
+        Usuario adminLogado = tenantContext.getUsuarioAutenticado();
+
+        return usuarioRepository.findByEmpresaId(adminLogado.getEmpresa().getId())
+                .stream()
+                .map(UsuarioListaDTO::new)
+                .collect(Collectors.toList());
     }
 
     public record AvatarDownload(Resource resource, String nomeOriginal, String tipoMime) {

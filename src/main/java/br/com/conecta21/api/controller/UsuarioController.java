@@ -1,9 +1,6 @@
 package br.com.conecta21.api.controller;
 
-import br.com.conecta21.api.dto.UsuarioCadastroDTO;
-import br.com.conecta21.api.dto.UsuarioPerfilAtualizacaoDTO;
-import br.com.conecta21.api.dto.UsuarioPerfilRespostaDTO;
-import br.com.conecta21.api.dto.UsuarioTrocaSenhaDTO;
+import br.com.conecta21.api.dto.*;
 import br.com.conecta21.api.service.UsuarioService;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -17,6 +14,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/usuarios")
@@ -81,5 +79,10 @@ public class UsuarioController {
     public ResponseEntity<Void> removerAvatar() {
         usuarioService.removerMeuAvatar();
         return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping
+    public ResponseEntity<List<UsuarioListaDTO>> listarMembros() {
+        return ResponseEntity.ok(usuarioService.listarMembrosDaEmpresa());
     }
 }

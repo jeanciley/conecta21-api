@@ -7,6 +7,7 @@ public record KanbanCardDTO(
         String titulo,
         String prioridade,
         String status,
+        String tipo,
         Long solicitanteId,
         Long tecnicoId,
         LocalDateTime dataAbertura,
