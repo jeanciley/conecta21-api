@@ -1,10 +1,26 @@
 spring:
+  mail:
+    host: ${SMTP_HOST:localhost}
+    port: ${SMTP_PORT:1025}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail.smtp.auth: ${SMTP_AUTH:false}
+      mail.smtp.starttls.enable: ${SMTP_STARTTLS:false}
+      mail.smtp.connectiontimeout: 5000
+      mail.smtp.timeout: 5000
+      mail.smtp.writetimeout: 5000
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 26MB
   datasource:
     url: jdbc:mysql://localhost:3306/conecta21?serverTimezone=UTC
     username: root
-    password: root
+    password: 
     driver-class-name: com.mysql.cj.jdbc.Driver
   jpa:
+    database-platform: org.hibernate.dialect.MySQLDialect
     show-sql: true
     hibernate:
       ddl-auto: validate
@@ -15,3 +31,5 @@ api:
   security:
     token:
       secret: ${JWT_SECRET:minha_senha_secreta_super_segura_123}
+app:
+  frontend-url: ${FRONTEND_URL:http://localhost:5500}

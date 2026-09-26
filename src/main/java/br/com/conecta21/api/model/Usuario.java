@@ -41,6 +41,9 @@ public class Usuario implements UserDetails {
     @Column(name = "data_criacao", updatable = false)
     private LocalDateTime dataCriacao;
 
+    @Column(name = "ativo", nullable = false)
+    private boolean ativo;
+
     @PrePersist
     protected void onCreate() {
         this.dataCriacao = LocalDateTime.now();
@@ -72,5 +75,5 @@ public class Usuario implements UserDetails {
     public boolean isCredentialsNonExpired() { return true; }
 
     @Override
-    public boolean isEnabled() { return true; }
+    public boolean isEnabled() { return ativo; }
 }

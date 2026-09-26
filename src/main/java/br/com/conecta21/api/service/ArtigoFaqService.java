@@ -48,6 +48,7 @@ public class ArtigoFaqService {
         artigo.setConteudo(dto.conteudo());
         artigo.setAutor(autorLogado);
         artigo.setEmpresa(autorLogado.getEmpresa());
+        artigo.setCategoria(categoria);
 
         ArtigoFaq salvo = artigoRepository.save(artigo);
 

@@ -36,6 +36,7 @@ public class SecurityConfig {
                     // Rotas públicas (Cadastro e Login)
                     req.requestMatchers(HttpMethod.POST, "/api/auth").permitAll();
                     req.requestMatchers(HttpMethod.POST, "/api/empresas").permitAll();
+                    req.requestMatchers(HttpMethod.POST, "/api/auth/ativacao", "/api/auth/esqueci-senha", "/api/auth/redefinir-senha").permitAll();
 
                     req.requestMatchers(
                             "/v3/api-docs",

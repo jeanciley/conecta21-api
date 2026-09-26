@@ -6,6 +6,12 @@ import jakarta.validation.constraints.Size;
 public record InteracaoCriacaoDTO(
         @NotBlank
         @Size(max = 4000)
-        String mensagem
+        String mensagem,
+
+        @Size(max = 40)
+        String tipo
 ) {
+    public InteracaoCriacaoDTO(String mensagem) {
+        this(mensagem, null);
+    }
 }
