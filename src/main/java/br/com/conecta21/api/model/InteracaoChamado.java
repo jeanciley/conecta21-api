@@ -5,6 +5,8 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Getter
 @Setter
@@ -25,8 +27,14 @@ public class InteracaoChamado {
     @JoinColumn(name = "autor_id", nullable = false)
     private Usuario autor;
 
+    @Column(nullable = false, length = 40)
+    private String tipo;
+
     @Column(nullable = false, columnDefinition = "TEXT")
     private String mensagem;
+
+    @OneToMany(mappedBy = "interacao", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<AnexoInteracao> anexos = new ArrayList<>();
 
     @Column(name = "data_criacao", nullable = false, updatable = false)
     private LocalDateTime dataCriacao;
@@ -35,6 +43,9 @@ public class InteracaoChamado {
     protected void onCreate() {
         if (this.dataCriacao == null) {
             this.dataCriacao = LocalDateTime.now();
+        }
+        if (this.tipo == null || this.tipo.isBlank()) {
+            this.tipo = "Comentário";
         }
     }
 }

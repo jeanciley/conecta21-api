@@ -49,6 +49,7 @@ public class ArtigoFaqService {
         artigo.setConteudo(dto.conteudo());
         artigo.setAutor(autorLogado);
         artigo.setEmpresa(autorLogado.getEmpresa());
+        artigo.setCategoria(categoria);
 
         // CORREÇÃO: Setando a categoria validada no artigo antes de salvar
         artigo.setCategoria(categoria);

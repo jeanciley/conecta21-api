@@ -11,4 +11,6 @@ public interface CategoriaRepository extends JpaRepository<Categoria, Long> {
     List<Categoria> findAllByEmpresaId(Long empresaId);
 
     Optional<Categoria> findByIdAndEmpresaId(Long id, Long empresaId);
+
+    long countByPrioridadeId(Long prioridadeId);
 }

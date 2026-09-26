@@ -4,11 +4,15 @@ import br.com.conecta21.api.aop.AuditarAcao;
 import br.com.conecta21.api.dto.ChamadoCriacaoDTO;
 import br.com.conecta21.api.dto.ChamadoRespostaDTO;
 import br.com.conecta21.api.dto.ChamadoStatusDTO;
-import br.com.conecta21.api.dto.KanbanCardDTO;
-import br.com.conecta21.api.dto.KanbanResponseDTO;
-import br.com.conecta21.api.model.*;
+import br.com.conecta21.api.model.Chamado;
+import br.com.conecta21.api.model.Categoria;
+import br.com.conecta21.api.model.PerfilUsuario;
+import br.com.conecta21.api.model.StatusChamado;
+import br.com.conecta21.api.model.Usuario;
 import br.com.conecta21.api.repository.ChamadoRepository;
 import br.com.conecta21.api.repository.ChamadoSpecs;
+import br.com.conecta21.api.repository.CategoriaRepository;
+import br.com.conecta21.api.model.Prioridade;
 import br.com.conecta21.api.repository.EmpresaRepository;
 import br.com.conecta21.api.repository.UsuarioRepository;
 import br.com.conecta21.api.security.TenantContext;
@@ -52,6 +56,9 @@ public class ChamadoService {
     private UsuarioRepository usuarioRepository;
 
     @Autowired
+    private CategoriaRepository categoriaRepository;
+
+    @Autowired
     private TenantContext tenantContext;
 
     @Autowired
@@ -86,27 +93,29 @@ public class ChamadoService {
         chamado.setTitulo(dto.titulo());
         chamado.setDescricao(dto.descricao());
         chamado.setStatus(StatusChamado.ABERTO);
+        Categoria categoria = categoriaRepository.findByIdAndEmpresaId(dto.categoriaId(), empresaId)
+                .filter(Categoria::isAtiva)
+                .orElseThrow(() -> new IllegalArgumentException("Categoria ativa não encontrada."));
+        Prioridade prioridade = categoria.getPrioridade();
+        if (prioridade == null || !prioridade.isAtiva()) {
+            throw new IllegalArgumentException("A categoria não possui prioridade ativa configurada.");
+        }
+        chamado.setCategoria(categoria);
+        chamado.setPrioridadeConfigurada(prioridade);
+        chamado.setPrioridade(prioridade.getNome());
+        chamado.setSlaRespostaMinutosSnapshot(prioridade.getSlaRespostaMinutos());
+        chamado.setSlaResolucaoMinutosSnapshot(prioridade.getSlaResolucaoMinutos());
 
-        // Mantém a lógica de prioridade que você já possui
-        if (dto.prioridade() != null && !dto.prioridade().isBlank()) {
-            chamado.setPrioridade(PrioridadeChamado.valueOf(dto.prioridade().trim().toUpperCase()));
+        if (dto.tecnicoId() != null) {
+            if (solicitante.getPerfil() != PerfilUsuario.ADMIN) throw new AccessDeniedException("Apenas o administrador pode atribuir o chamado durante a abertura.");
+            Usuario tecnico = usuarioRepository.findById(dto.tecnicoId())
+                    .orElseThrow(() -> new IllegalArgumentException("Técnico não encontrado."));
+            if (!empresaId.equals(tecnico.getEmpresa().getId()) || tecnico.getPerfil() != PerfilUsuario.TECNICO || !tecnico.isAtivo())
+                throw new AccessDeniedException("O responsável selecionado não é um técnico ativo desta empresa.");
+            chamado.setTecnico(tecnico);
         }
 
-        // NOVA LÓGICA: Roteamento de Tipo de Chamado
-        if (dto.tipo() != null && !dto.tipo().isBlank()) {
-            try {
-                chamado.setTipo(TipoChamado.valueOf(dto.tipo().trim().toUpperCase()));
-            } catch (IllegalArgumentException e) {
-                // Se o front-end mandar um tipo que não existe, força para o padrão
-                chamado.setTipo(TipoChamado.SUPORTE_EXTERNO);
-            }
-        } else {
-            chamado.setTipo(TipoChamado.SUPORTE_EXTERNO);
-        }
-
-        Chamado salvo = chamadoRepository.save(chamado);
-        anexoChamadoService.salvarAnexos(salvo, arquivos);
-        return toResposta(salvo);
+        return toResposta(chamadoRepository.save(chamado), solicitante.getPerfil() == PerfilUsuario.USUARIO);
     }
 
     @Transactional(readOnly = true)
@@ -141,14 +150,16 @@ public class ChamadoService {
                     .map(this::toResposta);
         }
 
+        boolean ocultarPrioridade = deveOcultarPrioridade();
         return chamadoRepository
-                .findAll(ChamadoSpecs.noTenantComFiltros(empresaId, status, tecnicoId, dataInicio, dataFim, tipos), pageable)
-                .map(this::toResposta);
+                .findAll(ChamadoSpecs.noTenantComFiltros(empresaId, status, tecnicoId, dataInicio, dataFim), pageable)
+                .map(chamado -> toResposta(chamado, ocultarPrioridade));
     }
 
     @Transactional(readOnly = true)
     public ChamadoRespostaDTO detalhar(Long id) {
-        return toResposta(buscarNoTenant(id));
+        boolean ocultarPrioridade = deveOcultarPrioridade();
+        return toResposta(buscarNoTenant(id), ocultarPrioridade);
     }
 
     // A chave do cache agora junta o ID da empresa com os tipos solicitados
@@ -207,8 +218,7 @@ public class ChamadoService {
             chamado.setDataFechamento(null);
         }
 
-        publicarAlteracaoStatus(chamado, statusAnterior, novoStatus);
-        return toResposta(chamado);
+        return toResposta(chamado, deveOcultarPrioridade());
     }
 
     private void publicarAlteracaoStatus(Chamado chamado, StatusChamado anterior, StatusChamado novo) {
@@ -242,32 +252,12 @@ public class ChamadoService {
                 .orElseThrow(() -> new EntityNotFoundException("Chamado não encontrado."));
     }
 
-    private List<KanbanCardDTO> buscarColuna(
-            Long empresaId, StatusChamado status, Long tecnicoId,
-            LocalDateTime dataInicio, LocalDateTime dataFim,
-            List<TipoChamado> tipos, // Novo parâmetro
-            Pageable paginaColuna) {
-
-        return chamadoRepository
-                .findAll(ChamadoSpecs.noTenantComFiltros(empresaId, status, tecnicoId, dataInicio, dataFim, tipos), paginaColuna)
-                .map(this::toCard)
-                .getContent();
+    private boolean deveOcultarPrioridade() {
+        Usuario usuario = tenantContext.getUsuarioAutenticado();
+        return usuario != null && usuario.getPerfil() == PerfilUsuario.USUARIO;
     }
 
-    private KanbanCardDTO toCard(Chamado chamado) {
-        return new KanbanCardDTO(
-                chamado.getId(),
-                chamado.getTitulo(),
-                chamado.getPrioridade() != null ? chamado.getPrioridade().name() : null,
-                chamado.getStatus().name(),
-                chamado.getTipo().name(),
-                chamado.getSolicitante().getId(),
-                chamado.getTecnico() != null ? chamado.getTecnico().getId() : null,
-                chamado.getDataAbertura(),
-                chamado.getDataLimiteResolucao());
-    }
-
-    private ChamadoRespostaDTO toResposta(Chamado chamado) {
+    private ChamadoRespostaDTO toResposta(Chamado chamado, boolean ocultarPrioridade) {
         return new ChamadoRespostaDTO(
                 chamado.getId(),
                 chamado.getEmpresa().getId(),
@@ -278,22 +268,12 @@ public class ChamadoService {
                 chamado.getTecnico() != null ? chamado.getTecnico().getId() : null,
                 chamado.getDataAbertura(),
                 chamado.getDataFechamento(),
-                chamado.getTipo().name());
-    }
-
-    private List<TipoChamado> converterTipos(List<String> tipos) {
-        if (tipos == null || tipos.isEmpty()) {
-            return null;
-        }
-        return tipos.stream()
-                .map(t -> {
-                    try {
-                        return TipoChamado.valueOf(t.trim().toUpperCase());
-                    } catch (IllegalArgumentException e) {
-                        return null; // Ignora tipos inválidos enviados na URL
-                    }
-                })
-                .filter(java.util.Objects::nonNull)
-                .toList();
+                ocultarPrioridade ? null : chamado.getPrioridade(),
+                chamado.getDataLimiteResolucao(),
+                chamado.getSolicitante().getNome(),
+                chamado.getTecnico() != null ? chamado.getTecnico().getNome() : null,
+                chamado.getCategoria() != null ? chamado.getCategoria().getId() : null,
+                chamado.getCategoria() != null ? chamado.getCategoria().getNome() : null,
+                chamado.getDataLimiteResposta());
     }
 }

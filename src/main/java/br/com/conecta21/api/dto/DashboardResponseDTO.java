@@ -7,6 +7,11 @@ public record DashboardResponseDTO(
         long chamadosEmAndamento,
         long chamadosResolvidos,
         long chamadosEmAtraso,
-        Map<String, Long> chamadosPorCategoria
+        Map<String, Long> chamadosPorCategoria,
+        Map<String, Long> chamadosPorStatus,
+        long slaCumpridos,
+        long slaViolados,
+        long slaRespostaCumprido,
+        long slaRespostaViolado
 ) {
 }

@@ -20,4 +20,11 @@ public class Categoria {
 
     @Column(nullable = false, length = 50)
     private String nome;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "prioridade_id")
+    private Prioridade prioridade;
+
+    @Column(nullable = false)
+    private boolean ativa = true;
 }
