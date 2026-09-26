@@ -29,14 +29,18 @@ public class SecurityFilter extends OncePerRequestFilter {
 
         if (tokenJWT != null) {
             try {
-                var subject = tokenService.getSubject(tokenJWT); // Extrai o e-mail (username) validado
+                var subject = tokenService.getSubject(tokenJWT);
                 if (subject == null || subject.isBlank()) {
                     filterChain.doFilter(request, response);
                     return;
                 }
-                // Validação estrita de tenant (Backend C): extrai o empresa_id do claim JWT.
+                // O id torna o token resiliente à alteração de e-mail do próprio perfil.
+                // Tokens antigos continuam compatíveis por meio do subject.
+                var usuarioId = tokenService.getUsuarioId(tokenJWT);
                 var empresaId = tokenService.getEmpresaId(tokenJWT);
-                var usuario = usuarioRepository.findByEmail(subject).orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
+                var usuario = usuarioId != null
+                        ? usuarioRepository.findById(usuarioId).orElseThrow(() -> new RuntimeException("Usuário não encontrado"))
+                        : usuarioRepository.findByEmail(subject).orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
 
                 // Força a autenticação no contexto do Spring Security
                 var authentication = new UsernamePasswordAuthenticationToken(usuario, null, usuario.getAuthorities());

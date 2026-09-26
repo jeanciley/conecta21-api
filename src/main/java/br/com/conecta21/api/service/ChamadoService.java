@@ -1,5 +1,6 @@
 package br.com.conecta21.api.service;
 
+import br.com.conecta21.api.aop.AuditarAcao;
 import br.com.conecta21.api.dto.ChamadoCriacaoDTO;
 import br.com.conecta21.api.dto.ChamadoRespostaDTO;
 import br.com.conecta21.api.dto.ChamadoStatusDTO;
@@ -17,24 +18,33 @@ import br.com.conecta21.api.repository.UsuarioRepository;
 import br.com.conecta21.api.security.TenantContext;
 import jakarta.persistence.EntityNotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
- * Motor operacional de chamados (Backend C — Sprint 1 e Motor SLA — Sprint 3).
+ * Motor operacional de chamados.
  *
- * <p>Validação estrita de tenant: todo acesso puxa o {@code empresa_id} do
- * token JWT (via {@link TenantContext#getEmpresaIdAutenticada()}, com validação
- * cruzada contra o banco) e aplica esse ID diretamente nas consultas JPA.
- * Nenhum {@code empresaId} vindo do body/query é aceito.
+ * <p>Todo acesso mantém a trava multi-tenant baseada no empresa_id do JWT,
+ * validado pelo {@link TenantContext}. Nenhum empresaId recebido do cliente
+ * é usado para autorizar acesso.</p>
  */
 @Service
 public class ChamadoService {
+
+    private static final int LIMITE_KANBAN_PADRAO = 50;
+    private static final int LIMITE_KANBAN_MAXIMO = 200;
 
     @Autowired
     private ChamadoRepository chamadoRepository;
@@ -51,11 +61,28 @@ public class ChamadoService {
     @Autowired
     private TenantContext tenantContext;
 
+    @Autowired
+    private AnexoChamadoService anexoChamadoService;
+
+    @Autowired
+    private ApplicationEventPublisher eventPublisher;
+
     @Transactional
     public ChamadoRespostaDTO criar(ChamadoCriacaoDTO dto) {
-        // Fonte do tenant: claim empresa_id do JWT (TenantContext já valida contra o banco).
+        return criarInterno(dto, List.of());
+    }
+
+    @CacheEvict(value = "kanban_empresa", allEntries = true) // Limpa todos os quadros kanban quando há alteração
+    @AuditarAcao(acao = "CRIACAO", entidade = "Chamado")
+    @Transactional
+    public ChamadoRespostaDTO criar(ChamadoCriacaoDTO dto, List<MultipartFile> arquivos) {
+        return criarInterno(dto, arquivos == null ? List.of() : arquivos);
+    }
+
+    private ChamadoRespostaDTO criarInterno(ChamadoCriacaoDTO dto, List<MultipartFile> arquivos) {
         Long empresaId = tenantContext.getEmpresaIdAutenticada();
         Usuario solicitante = tenantContext.getUsuarioAutenticado();
+
         if (!empresaId.equals(solicitante.getEmpresa().getId())) {
             throw new AccessDeniedException("Divergência de tenant entre token e usuário.");
         }
@@ -96,15 +123,31 @@ public class ChamadoService {
             String statusFiltro, Long tecnicoId,
             LocalDateTime dataInicio, LocalDateTime dataFim,
             Pageable pageable) {
-        Long empresaId = tenantContext.getEmpresaIdAutenticada();
+        return listar(statusFiltro, tecnicoId, dataInicio, dataFim, null, null, pageable);
+    }
 
-        StatusChamado status = null;
-        if (statusFiltro != null && !statusFiltro.isBlank()) {
-            try {
-                status = StatusChamado.valueOf(statusFiltro.trim().toUpperCase());
-            } catch (IllegalArgumentException e) {
-                throw new IllegalArgumentException("Status inválido. Valores aceitos: ABERTO, EM_ANDAMENTO, RESOLVIDO, EM_ATRASO");
-            }
+    @Transactional(readOnly = true)
+    public Page<ChamadoRespostaDTO> listar(
+            String statusFiltro, Long tecnicoId,
+            LocalDateTime dataInicio, LocalDateTime dataFim,
+            String busca, List<String> tiposFiltro, Pageable pageable) { // Adicionado o tiposFiltro
+
+        Long empresaId = tenantContext.getEmpresaIdAutenticada();
+        StatusChamado status = converterStatusOpcional(statusFiltro);
+        List<TipoChamado> tipos = converterTipos(tiposFiltro); // Converte os tipos enviados
+
+        if (busca != null && !busca.isBlank()) {
+            Pageable paginaSemOrdenacaoExterna = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
+            return chamadoRepository
+                    .pesquisarFullText(
+                            empresaId,
+                            busca.trim(),
+                            status != null ? status.name() : null,
+                            tecnicoId,
+                            dataInicio,
+                            dataFim,
+                            paginaSemOrdenacaoExterna) // NOTA: Se você for usar tipos na busca FullText, precisará alterar a query nativa do repositório também!
+                    .map(this::toResposta);
         }
 
         boolean ocultarPrioridade = deveOcultarPrioridade();
@@ -119,18 +162,45 @@ public class ChamadoService {
         return toResposta(buscarNoTenant(id), ocultarPrioridade);
     }
 
-    @Transactional
-    public ChamadoRespostaDTO alterarStatus(Long id, ChamadoStatusDTO dto) {
-        StatusChamado novoStatus;
+    // A chave do cache agora junta o ID da empresa com os tipos solicitados
+    @Cacheable(value = "kanban_empresa", key = "@tenantContext.getEmpresaIdAutenticada() + '-' + (#tiposFiltro != null ? #tiposFiltro.toString() : 'TODOS')")
+    @Transactional(readOnly = true)
+    public KanbanResponseDTO obterKanban(
+            Long tecnicoId,
+            LocalDateTime dataInicio, LocalDateTime dataFim,
+            Integer limite,
+            List<String> tiposFiltro) { // Novo parâmetro recebido do Controller
 
-        try {
-            novoStatus = StatusChamado.valueOf(dto.status().trim().toUpperCase());
-        } catch (IllegalArgumentException e) {
-            throw new IllegalArgumentException("Status inválido. Valores aceitos: ABERTO, EM_ANDAMENTO, RESOLVIDO, EM_ATRASO");
+        Long empresaId = tenantContext.getEmpresaIdAutenticada();
+        List<TipoChamado> tipos = converterTipos(tiposFiltro);
+
+        int porColuna = limite != null ? limite : LIMITE_KANBAN_PADRAO;
+        if (porColuna < 1 || porColuna > LIMITE_KANBAN_MAXIMO) {
+            throw new IllegalArgumentException("Limite inválido.");
         }
 
-        Chamado chamado = buscarNoTenant(id);
+        Pageable paginaColuna = PageRequest.of(0, porColuna, Sort.by(Sort.Direction.DESC, "dataAbertura"));
 
+        return new KanbanResponseDTO(
+                buscarColuna(empresaId, StatusChamado.ABERTO, tecnicoId, dataInicio, dataFim, tipos, paginaColuna),
+                buscarColuna(empresaId, StatusChamado.EM_ANDAMENTO, tecnicoId, dataInicio, dataFim, tipos, paginaColuna),
+                buscarColuna(empresaId, StatusChamado.EM_ATRASO, tecnicoId, dataInicio, dataFim, tipos, paginaColuna),
+                buscarColuna(empresaId, StatusChamado.RESOLVIDO, tecnicoId, dataInicio, dataFim, tipos, paginaColuna));
+    }
+
+    @CacheEvict(value = "kanban_empresa", key = "#{@tenantContext.getEmpresaIdAutenticada()}")
+    @AuditarAcao(acao = "ALTERACAO_STATUS", entidade = "Chamado")
+    @Transactional
+    public ChamadoRespostaDTO alterarStatus(Long id, ChamadoStatusDTO dto) {
+        StatusChamado novoStatus = converterStatusObrigatorio(dto.status());
+        Chamado chamado = buscarNoTenant(id);
+        StatusChamado statusAnterior = chamado.getStatus();
+
+        if (statusAnterior == novoStatus) {
+            return toResposta(chamado);
+        }
+
+        // CORREÇÃO: Lógica duplicada de buscarNoTenant e verificação de perfil removidas.
         if (StatusChamado.RESOLVIDO.equals(novoStatus)) {
             Usuario ator = tenantContext.getUsuarioAutenticado();
             if (ator.getPerfil() != PerfilUsuario.TECNICO && ator.getPerfil() != PerfilUsuario.ADMIN) {
@@ -151,6 +221,32 @@ public class ChamadoService {
         return toResposta(chamado, deveOcultarPrioridade());
     }
 
+    private void publicarAlteracaoStatus(Chamado chamado, StatusChamado anterior, StatusChamado novo) {
+        eventPublisher.publishEvent(new ChamadoStatusAlteradoEvent(
+                chamado.getId(),
+                chamado.getTitulo(),
+                chamado.getSolicitante().getEmail(),
+                chamado.getSolicitante().getNome(),
+                anterior,
+                novo));
+    }
+
+    private StatusChamado converterStatusOpcional(String status) {
+        if (status == null || status.isBlank()) {
+            return null;
+        }
+        return converterStatusObrigatorio(status);
+    }
+
+    private StatusChamado converterStatusObrigatorio(String status) {
+        try {
+            return StatusChamado.valueOf(status.trim().toUpperCase());
+        } catch (IllegalArgumentException | NullPointerException e) {
+            throw new IllegalArgumentException(
+                    "Status inválido. Valores aceitos: ABERTO, EM_ANDAMENTO, RESOLVIDO, EM_ATRASO");
+        }
+    }
+
     private Chamado buscarNoTenant(Long id) {
         return chamadoRepository.findByIdAndEmpresaId(id, tenantContext.getEmpresaIdAutenticada())
                 .orElseThrow(() -> new EntityNotFoundException("Chamado não encontrado."));
@@ -167,7 +263,7 @@ public class ChamadoService {
                 chamado.getEmpresa().getId(),
                 chamado.getTitulo(),
                 chamado.getDescricao(),
-                chamado.getStatus().name(), // Converte o Enum de volta para String no JSON de resposta
+                chamado.getStatus().name(),
                 chamado.getSolicitante().getId(),
                 chamado.getTecnico() != null ? chamado.getTecnico().getId() : null,
                 chamado.getDataAbertura(),

@@ -31,10 +31,12 @@ public class ArtigoFaqController {
         return ResponseEntity.created(uri).body(resposta);
     }
 
+    // CORREÇÃO: O retorno foi alterado de Page para List, e a lógica
+    // roteia para o método correto do Service dependendo se há um termo de busca.
     @GetMapping
-    public ResponseEntity<List<ArtigoRespostaDTO>> listar(@RequestParam(required = false) String termo) {
-        if (termo != null && !termo.trim().isEmpty()) {
-            return ResponseEntity.ok(artigoFaqService.buscarPorTermo(termo));
+    public ResponseEntity<List<ArtigoRespostaDTO>> listar(@RequestParam(required = false) String busca) {
+        if (busca != null && !busca.isBlank()) {
+            return ResponseEntity.ok(artigoFaqService.buscarPorTermo(busca));
         }
         return ResponseEntity.ok(artigoFaqService.listar());
     }
@@ -43,5 +45,4 @@ public class ArtigoFaqController {
     public ResponseEntity<ArtigoRespostaDTO> detalhar(@PathVariable Long id) {
         return ResponseEntity.ok(artigoFaqService.detalhar(id));
     }
-
 }
