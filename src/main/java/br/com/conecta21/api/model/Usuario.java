@@ -44,6 +44,13 @@ public class Usuario implements UserDetails {
     @Column(name = "ativo", nullable = false)
     private boolean ativo;
 
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "perfil_customizado_id")
+    private PerfilCustomizado perfilCustomizado;
+
+    @Column(name = "excluido_em")
+    private LocalDateTime excluidoEm;
+
     @PrePersist
     protected void onCreate() {
         this.dataCriacao = LocalDateTime.now();
@@ -52,7 +59,22 @@ public class Usuario implements UserDetails {
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
         // Agora extraímos o nome da constante do Enum
-        return List.of(new SimpleGrantedAuthority("ROLE_" + this.perfil.name()));
+        List<SimpleGrantedAuthority> authorities = new java.util.ArrayList<>();
+        authorities.add(new SimpleGrantedAuthority("ROLE_" + this.perfil.name()));
+        if (perfilCustomizado != null) {
+            authorities.add(new SimpleGrantedAuthority("ROLE_CUSTOM"));
+            for (String permission : perfilCustomizado.getPermissoes().split(",")) {
+                if (!permission.isBlank()) authorities.add(new SimpleGrantedAuthority("PERM_" + permission.trim()));
+            }
+        }
+        return authorities;
+    }
+
+    public boolean temPermissao(String permissao) {
+        if (perfil == PerfilUsuario.ADMIN) return true;
+        if (perfil == PerfilUsuario.TECNICO && ("CHAMADOS_INTERNOS".equals(permissao) || "GERAR_RELATORIOS".equals(permissao))) return true;
+        return perfilCustomizado != null && perfilCustomizado.isAtivo()
+                && java.util.Arrays.stream(perfilCustomizado.getPermissoes().split(",")).anyMatch(permissao::equals);
     }
 
     @Override
@@ -75,5 +97,5 @@ public class Usuario implements UserDetails {
     public boolean isCredentialsNonExpired() { return true; }
 
     @Override
-    public boolean isEnabled() { return ativo; }
+    public boolean isEnabled() { return ativo && excluidoEm == null; }
 }

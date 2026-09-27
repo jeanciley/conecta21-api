@@ -8,6 +8,7 @@ public record ArtigoRespostaDTO(
         String conteudo,
         Long autorId,
         String nomeAutor,
+        Long categoriaId,
         String nomeCategoria,
         LocalDateTime dataCriacao
 ) {

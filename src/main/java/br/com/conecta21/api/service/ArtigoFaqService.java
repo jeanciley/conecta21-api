@@ -32,9 +32,7 @@ public class ArtigoFaqService {
         Usuario autorLogado = tenantContext.getUsuarioAutenticado();
         Long empresaId = autorLogado.getEmpresa().getId();
 
-        if (PerfilUsuario.USUARIO.equals(autorLogado.getPerfil())){
-            throw new IllegalArgumentException("Acesso negado. Apenas técnicos e administradores podem publicar artigos.");
-        }
+        if (!autorLogado.temPermissao("GERENCIAR_FAQ")) throw new org.springframework.security.access.AccessDeniedException("Sem permissão para publicar artigos.");
 
         if (artigoRepository.existsByTituloIgnoreCaseAndEmpresaId(dto.titulo(), empresaId)) {
             throw new IllegalArgumentException("Já existe um artigo com este título na sua base de conhecimento.");
@@ -85,6 +83,28 @@ public class ArtigoFaqService {
                 .toList();
     }
 
+    @Transactional
+    public ArtigoRespostaDTO atualizar(Long id, ArtigoCriacaoDTO dto) {
+        Usuario ator = tenantContext.getUsuarioAutenticado();
+        if (!ator.temPermissao("GERENCIAR_FAQ")) throw new org.springframework.security.access.AccessDeniedException("Sem permissão para editar artigos.");
+        Long empresaId = ator.getEmpresa().getId();
+        ArtigoFaq artigo = artigoRepository.findByIdAndEmpresaId(id, empresaId)
+                .orElseThrow(() -> new EntityNotFoundException("Artigo não encontrado."));
+        Categoria categoria = categoriaRepository.findByIdAndEmpresaId(dto.categoriaId(), empresaId)
+                .orElseThrow(() -> new IllegalArgumentException("Categoria não encontrada."));
+        artigo.setTitulo(dto.titulo().trim()); artigo.setConteudo(dto.conteudo().trim()); artigo.setCategoria(categoria);
+        return toRespostaDTO(artigoRepository.save(artigo));
+    }
+
+    @Transactional
+    public void excluir(Long id) {
+        Usuario ator = tenantContext.getUsuarioAutenticado();
+        if (!ator.temPermissao("GERENCIAR_FAQ")) throw new org.springframework.security.access.AccessDeniedException("Sem permissão para excluir artigos.");
+        ArtigoFaq artigo = artigoRepository.findByIdAndEmpresaId(id, ator.getEmpresa().getId())
+                .orElseThrow(() -> new EntityNotFoundException("Artigo não encontrado."));
+        artigoRepository.delete(artigo);
+    }
+
     private ArtigoRespostaDTO toRespostaDTO(ArtigoFaq artigo) {
         return new ArtigoRespostaDTO(
                 artigo.getId(),
@@ -92,6 +112,7 @@ public class ArtigoFaqService {
                 artigo.getConteudo(),
                 artigo.getAutor().getId(),
                 artigo.getAutor().getNome(),
+                artigo.getCategoria().getId(),
                 artigo.getCategoria().getNome(),
                 artigo.getDataCriacao()
         );

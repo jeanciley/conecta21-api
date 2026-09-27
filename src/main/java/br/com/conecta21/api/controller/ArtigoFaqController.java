@@ -44,4 +44,12 @@ public class ArtigoFaqController {
         return ResponseEntity.ok(artigoFaqService.detalhar(id));
     }
 
+    @PutMapping("/{id}")
+    public ResponseEntity<ArtigoRespostaDTO> atualizar(@PathVariable Long id, @RequestBody @Valid ArtigoCriacaoDTO dto) {
+        return ResponseEntity.ok(artigoFaqService.atualizar(id, dto));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> excluir(@PathVariable Long id) { artigoFaqService.excluir(id); return ResponseEntity.noContent().build(); }
+
 }

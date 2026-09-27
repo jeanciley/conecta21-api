@@ -27,12 +27,14 @@ public final class ChamadoSpecs {
             StatusChamado status,
             Long tecnicoId,
             LocalDateTime dataInicio,
-            LocalDateTime dataFim) {
+            LocalDateTime dataFim,
+            boolean interno) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
 
             // Cláusula principal: trava do SaaS.
             predicates.add(cb.equal(root.get("empresa").get("id"), empresaId));
+            predicates.add(cb.equal(root.get("interno"), interno));
 
             if (status != null) {
                 predicates.add(cb.equal(root.get("status"), status));

@@ -21,6 +21,8 @@ create table `usuarios` (
                             `perfil` varchar(20) not null,
                             `data_criacao` datetime default CURRENT_TIMESTAMP,
                             `ativo` bit not null default b'1',
+                            `excluido_em` datetime default null,
+                            `perfil_customizado_id` bigint default null,
                             primary key (`id`),
                             unique key `email` (`email`),
                             key `fk_usuario_empresa` (`empresa_id`),
@@ -38,6 +40,7 @@ create table `chamados` (
                             `data_abertura` datetime default CURRENT_TIMESTAMP,
                             `data_fechamento` datetime default null,
                             `prioridade` varchar(50) not null default 'BAIXA',
+                            `interno` bit not null default b'0',
                             `data_limite_resolucao` datetime default null,
                             `prioridade_id` bigint default null,
                             `categoria_id` bigint default null,
@@ -64,6 +67,17 @@ CREATE TABLE `prioridades` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_prioridade_empresa_nome` (`empresa_id`, `nome`),
   CONSTRAINT `fk_prioridade_empresa` FOREIGN KEY (`empresa_id`) REFERENCES `empresas` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `perfis_customizados` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `empresa_id` BIGINT NOT NULL,
+  `nome` VARCHAR(60) NOT NULL,
+  `descricao` VARCHAR(255) NULL,
+  `permissoes` TEXT NOT NULL,
+  `ativo` BIT NOT NULL DEFAULT b'1',
+  UNIQUE KEY `uk_perfil_empresa_nome` (`empresa_id`, `nome`),
+  CONSTRAINT `fk_perfil_empresa` FOREIGN KEY (`empresa_id`) REFERENCES `empresas` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 create table `interacoes_chamado` (
@@ -110,6 +124,8 @@ CREATE TABLE `tokens_usuario` (
   PRIMARY KEY (`id`), UNIQUE KEY `uk_token_hash` (`token_hash`), KEY `idx_token_hash` (`token_hash`),
   CONSTRAINT `fk_token_usuario` FOREIGN KEY (`usuario_id`) REFERENCES `usuarios` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+ALTER TABLE usuarios ADD CONSTRAINT fk_usuario_perfil_customizado FOREIGN KEY (perfil_customizado_id) REFERENCES perfis_customizados(id);
 
 ALTER TABLE chamados
   ADD CONSTRAINT fk_chamado_prioridade FOREIGN KEY (prioridade_id) REFERENCES prioridades(id),

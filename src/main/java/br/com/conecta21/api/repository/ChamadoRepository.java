@@ -23,6 +23,8 @@ public interface ChamadoRepository extends JpaRepository<Chamado, Long>, JpaSpec
             LocalDateTime dataLimite
     );
 
+    long countByEmpresaIdAndInternoAndStatusAndDataAberturaAfter(Long empresaId, boolean interno, StatusChamado status, LocalDateTime dataLimite);
+
     List<Chamado> findByStatusInAndDataLimiteResolucaoBefore(
             List<StatusChamado> status,
             LocalDateTime momentoAtual

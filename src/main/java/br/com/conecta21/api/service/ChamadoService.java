@@ -66,6 +66,8 @@ public class ChamadoService {
         chamado.setTitulo(dto.titulo());
         chamado.setDescricao(dto.descricao());
         chamado.setStatus(StatusChamado.ABERTO);
+        if (dto.interno() && !solicitante.temPermissao("CHAMADOS_INTERNOS")) throw new AccessDeniedException("Sem permissão para abrir chamados internos.");
+        chamado.setInterno(dto.interno());
         Categoria categoria = categoriaRepository.findByIdAndEmpresaId(dto.categoriaId(), empresaId)
                 .filter(Categoria::isAtiva)
                 .orElseThrow(() -> new IllegalArgumentException("Categoria ativa não encontrada."));
@@ -80,10 +82,11 @@ public class ChamadoService {
         chamado.setSlaResolucaoMinutosSnapshot(prioridade.getSlaResolucaoMinutos());
 
         if (dto.tecnicoId() != null) {
-            if (solicitante.getPerfil() != PerfilUsuario.ADMIN) throw new AccessDeniedException("Apenas o administrador pode atribuir o chamado durante a abertura.");
+            if (!solicitante.temPermissao("GERENCIAR_CHAMADOS")) throw new AccessDeniedException("Sem permissão para atribuir o chamado durante a abertura.");
             Usuario tecnico = usuarioRepository.findById(dto.tecnicoId())
                     .orElseThrow(() -> new IllegalArgumentException("Técnico não encontrado."));
-            if (!empresaId.equals(tecnico.getEmpresa().getId()) || tecnico.getPerfil() != PerfilUsuario.TECNICO || !tecnico.isAtivo())
+            if (!empresaId.equals(tecnico.getEmpresa().getId()) || !tecnico.isAtivo()
+                    || !(tecnico.getPerfil() == PerfilUsuario.TECNICO || tecnico.temPermissao("CHAMADOS_INTERNOS") || tecnico.temPermissao("GERENCIAR_CHAMADOS")))
                 throw new AccessDeniedException("O responsável selecionado não é um técnico ativo desta empresa.");
             chamado.setTecnico(tecnico);
         }
@@ -96,7 +99,17 @@ public class ChamadoService {
             String statusFiltro, Long tecnicoId,
             LocalDateTime dataInicio, LocalDateTime dataFim,
             Pageable pageable) {
+        return listar(statusFiltro, tecnicoId, dataInicio, dataFim, false, pageable);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<ChamadoRespostaDTO> listar(
+            String statusFiltro, Long tecnicoId,
+            LocalDateTime dataInicio, LocalDateTime dataFim, boolean interno,
+            Pageable pageable) {
         Long empresaId = tenantContext.getEmpresaIdAutenticada();
+        Usuario usuario = tenantContext.getUsuarioAutenticado();
+        if (interno && !usuario.temPermissao("CHAMADOS_INTERNOS")) throw new AccessDeniedException("Sem permissão para consultar chamados internos.");
 
         StatusChamado status = null;
         if (statusFiltro != null && !statusFiltro.isBlank()) {
@@ -109,14 +122,16 @@ public class ChamadoService {
 
         boolean ocultarPrioridade = deveOcultarPrioridade();
         return chamadoRepository
-                .findAll(ChamadoSpecs.noTenantComFiltros(empresaId, status, tecnicoId, dataInicio, dataFim), pageable)
+                .findAll(ChamadoSpecs.noTenantComFiltros(empresaId, status, tecnicoId, dataInicio, dataFim, interno), pageable)
                 .map(chamado -> toResposta(chamado, ocultarPrioridade));
     }
 
     @Transactional(readOnly = true)
     public ChamadoRespostaDTO detalhar(Long id) {
         boolean ocultarPrioridade = deveOcultarPrioridade();
-        return toResposta(buscarNoTenant(id), ocultarPrioridade);
+        Chamado chamado = buscarNoTenant(id);
+        exigirAcessoInterno(chamado);
+        return toResposta(chamado, ocultarPrioridade);
     }
 
     @Transactional
@@ -130,10 +145,11 @@ public class ChamadoService {
         }
 
         Chamado chamado = buscarNoTenant(id);
+        exigirAcessoInterno(chamado);
 
         if (StatusChamado.RESOLVIDO.equals(novoStatus)) {
             Usuario ator = tenantContext.getUsuarioAutenticado();
-            if (ator.getPerfil() != PerfilUsuario.TECNICO && ator.getPerfil() != PerfilUsuario.ADMIN) {
+            if (!ator.temPermissao("CHAMADOS_INTERNOS")) {
                 throw new AccessDeniedException("Apenas técnico ou administrador pode marcar o chamado como RESOLVIDO.");
             }
         }
@@ -159,6 +175,11 @@ public class ChamadoService {
     private boolean deveOcultarPrioridade() {
         Usuario usuario = tenantContext.getUsuarioAutenticado();
         return usuario != null && usuario.getPerfil() == PerfilUsuario.USUARIO;
+    }
+
+    public void exigirAcessoInterno(Chamado chamado) {
+        Usuario usuario = tenantContext.getUsuarioAutenticado();
+        if (chamado.isInterno() && !usuario.temPermissao("CHAMADOS_INTERNOS")) throw new EntityNotFoundException("Chamado não encontrado.");
     }
 
     private ChamadoRespostaDTO toResposta(Chamado chamado, boolean ocultarPrioridade) {

@@ -28,23 +28,18 @@ public class DashboardService {
     public DashboardResponseDTO obterMetricasUltimos30Dias() {
 
         Long empresaId = tenantContext.getEmpresaIdAutenticada();
+        boolean incluirInternos = tenantContext.getUsuarioAutenticado().temPermissao("CHAMADOS_INTERNOS");
         LocalDateTime trintaDiasAtras = LocalDateTime.now().minusDays(30);
 
-        long abertos = chamadoRepository.countByEmpresaIdAndStatusAndDataAberturaAfter(
-                empresaId, StatusChamado.ABERTO, trintaDiasAtras);
-
-        long emAndamento = chamadoRepository.countByEmpresaIdAndStatusAndDataAberturaAfter(
-                empresaId, StatusChamado.EM_ANDAMENTO, trintaDiasAtras);
-
-        long resolvidos = chamadoRepository.countByEmpresaIdAndStatusAndDataAberturaAfter(
-                empresaId, StatusChamado.RESOLVIDO, trintaDiasAtras);
-
-        long emAtraso = chamadoRepository.countByEmpresaIdAndStatusAndDataAberturaAfter(
-                empresaId, StatusChamado.EM_ATRASO, trintaDiasAtras);
-
         List<Chamado> chamadosRecentes = chamadoRepository.findAllByEmpresaId(empresaId).stream()
+                .filter(chamado -> incluirInternos || !chamado.isInterno())
                 .filter(chamado -> chamado.getDataAbertura() != null && chamado.getDataAbertura().isAfter(trintaDiasAtras))
                 .toList();
+
+        long abertos = chamadosRecentes.stream().filter(c -> c.getStatus() == StatusChamado.ABERTO).count();
+        long emAndamento = chamadosRecentes.stream().filter(c -> c.getStatus() == StatusChamado.EM_ANDAMENTO).count();
+        long resolvidos = chamadosRecentes.stream().filter(c -> c.getStatus() == StatusChamado.RESOLVIDO).count();
+        long emAtraso = chamadosRecentes.stream().filter(c -> c.getStatus() == StatusChamado.EM_ATRASO).count();
 
         Map<String, Long> chamadosPorCategoria = chamadosRecentes.stream()
                 .filter(chamado -> chamado.getCategoria() != null)

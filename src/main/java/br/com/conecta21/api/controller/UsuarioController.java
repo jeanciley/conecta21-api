@@ -36,4 +36,10 @@ public class UsuarioController {
     public ResponseEntity<UsuarioRespostaDTO> obterPerfilLogado() {
         return ResponseEntity.ok(usuarioService.obterPerfilLogado());
     }
+
+    @org.springframework.web.bind.annotation.DeleteMapping("/{id}")
+    public ResponseEntity<Void> excluir(@org.springframework.web.bind.annotation.PathVariable Long id) {
+        usuarioService.excluir(id);
+        return ResponseEntity.noContent().build();
+    }
 }

@@ -13,9 +13,10 @@ public record ChamadoCriacaoDTO(
         String descricao,
 
         @NotNull Long categoriaId,
-        Long tecnicoId
+        Long tecnicoId,
+        boolean interno
 ) {
     public ChamadoCriacaoDTO(String titulo, String descricao, br.com.conecta21.api.model.PrioridadeChamado prioridade) {
-        this(titulo, descricao, null, null);
+        this(titulo, descricao, null, null, false);
     }
 }

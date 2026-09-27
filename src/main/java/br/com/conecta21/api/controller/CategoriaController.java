@@ -35,4 +35,9 @@ public class CategoriaController {
         // Retorna a lista de DTOs com status 200 OK
         return ResponseEntity.ok(categoriaService.listar());
     }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<CategoriaRespostaDTO> atualizar(@PathVariable Long id, @RequestBody @Valid CategoriaCriacaoDTO dto) {
+        return ResponseEntity.ok(categoriaService.atualizar(id, dto));
+    }
 }
