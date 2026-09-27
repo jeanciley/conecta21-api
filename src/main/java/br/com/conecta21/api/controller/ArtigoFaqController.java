@@ -32,9 +32,12 @@ public class ArtigoFaqController {
     }
 
     @GetMapping
-    public ResponseEntity<List<ArtigoRespostaDTO>> listar(@RequestParam(required = false) String termo) {
-        if (termo != null && !termo.trim().isEmpty()) {
-            return ResponseEntity.ok(artigoFaqService.buscarPorTermo(termo));
+    public ResponseEntity<List<ArtigoRespostaDTO>> listar(
+            @RequestParam(required = false) String termo,
+            @RequestParam(required = false) String busca) {
+        String filtro = (termo != null && !termo.isBlank()) ? termo : busca;
+        if (filtro != null && !filtro.isBlank()) {
+            return ResponseEntity.ok(artigoFaqService.buscarPorTermo(filtro));
         }
         return ResponseEntity.ok(artigoFaqService.listar());
     }
@@ -43,5 +46,13 @@ public class ArtigoFaqController {
     public ResponseEntity<ArtigoRespostaDTO> detalhar(@PathVariable Long id) {
         return ResponseEntity.ok(artigoFaqService.detalhar(id));
     }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<ArtigoRespostaDTO> atualizar(@PathVariable Long id, @RequestBody @Valid ArtigoCriacaoDTO dto) {
+        return ResponseEntity.ok(artigoFaqService.atualizar(id, dto));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> excluir(@PathVariable Long id) { artigoFaqService.excluir(id); return ResponseEntity.noContent().build(); }
 
 }

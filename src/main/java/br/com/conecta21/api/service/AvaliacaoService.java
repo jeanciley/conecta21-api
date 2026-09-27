@@ -33,6 +33,9 @@ public class AvaliacaoService {
     @Autowired
     private TenantContext tenantContext;
 
+    @Autowired
+    private ChamadoService chamadoService;
+
     @Transactional
     public AvaliacaoRespostaDTO criar(Long chamadoId, AvaliacaoCriacaoDTO dto) {
         Long empresaId = tenantContext.getEmpresaIdAutenticada();
@@ -41,6 +44,7 @@ public class AvaliacaoService {
         Chamado chamado = chamadoRepository.findByIdAndEmpresaId(chamadoId, empresaId)
                 .orElseThrow(() -> new EntityNotFoundException("Chamado não encontrado."));
 
+        chamadoService.exigirAcessoInterno(chamado);
         if (!StatusChamado.RESOLVIDO.equals(chamado.getStatus())) {
             throw new IllegalArgumentException("Chamado ainda não foi resolvido. Avaliação liberada apenas após RESOLVIDO.");
         }
@@ -69,6 +73,7 @@ public class AvaliacaoService {
             throw new EntityNotFoundException("Chamado não encontrado.");
         }
 
+        chamadoRepository.findByIdAndEmpresaId(chamadoId, empresaId).ifPresent(chamadoService::exigirAcessoInterno);
         Avaliacao avaliacao = avaliacaoRepository
                 .findByChamadoIdAndChamadoEmpresaId(chamadoId, empresaId)
                 .orElseThrow(() -> new EntityNotFoundException("Avaliação não encontrada."));

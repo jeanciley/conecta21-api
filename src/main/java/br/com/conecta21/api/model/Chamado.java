@@ -3,6 +3,8 @@ package br.com.conecta21.api.model;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.SQLDelete;
+import org.hibernate.annotations.SQLRestriction;
 
 import java.time.LocalDateTime;
 
@@ -10,6 +12,10 @@ import java.time.LocalDateTime;
 @Setter
 @Entity
 @Table(name = "chamados")
+// 1. Intercepta o delete físico e transforma em update
+@SQLDelete(sql = "UPDATE chamados SET excluido = true WHERE id = ?")
+// 2. Filtra automaticamente os excluídos em todas as consultas (substitui o antigo @Where)
+@SQLRestriction("excluido = false")
 public class Chamado {
 
     @Id
@@ -48,12 +54,41 @@ public class Chamado {
     @Column(name = "data_fechamento")
     private LocalDateTime dataFechamento;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private PrioridadeChamado prioridade;
+    @Column(nullable = false, length = 50)
+    private String prioridade;
+
+    @Column(name = "interno", nullable = false)
+    private boolean interno;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "prioridade_id")
+    private Prioridade prioridadeConfigurada;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "categoria_id")
+    private Categoria categoria;
+
+    @Column(name = "sla_resposta_minutos_snapshot")
+    private Integer slaRespostaMinutosSnapshot;
+
+    @Column(name = "sla_resolucao_minutos_snapshot")
+    private Integer slaResolucaoMinutosSnapshot;
+
+    @Column(name = "data_limite_resposta")
+    private LocalDateTime dataLimiteResposta;
+
+    @Column(name = "data_primeira_resposta")
+    private LocalDateTime dataPrimeiraResposta;
 
     @Column(name = "data_limite_resolucao")
     private LocalDateTime dataLimiteResolucao;
+
+    @Column(nullable = false)
+    private boolean excluido = false;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private TipoChamado tipo = TipoChamado.SUPORTE_EXTERNO;
 
     @ManyToMany
     @JoinTable(
@@ -72,8 +107,9 @@ public class Chamado {
             this.status = StatusChamado.ABERTO;
         }
 
-        if (this.prioridade != null) {
-            this.dataLimiteResolucao = this.dataAbertura.plusHours(this.prioridade.getHorasSla());
+        if (this.prioridadeConfigurada != null) {
+            this.dataLimiteResposta = this.dataAbertura.plusMinutes(this.slaRespostaMinutosSnapshot);
+            this.dataLimiteResolucao = this.dataAbertura.plusMinutes(this.slaResolucaoMinutosSnapshot);
         }
     }
 }

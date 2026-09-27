@@ -24,6 +24,7 @@ public class TokenService {
             return JWT.create()
                     .withIssuer("conecta21-api")
                     .withSubject(usuario.getUsername())
+                    .withClaim("usuario_id", usuario.getId())
                     .withClaim("empresa_id", usuario.getEmpresa().getId())
                     .withClaim("perfil", usuario.getPerfil().name())
                     .withExpiresAt(dataExpiracao())
@@ -43,6 +44,23 @@ public class TokenService {
                     .getSubject();
         } catch (JWTVerificationException exception) {
             return "";
+        }
+    }
+
+    /**
+     * Identificador imutável do usuário. Tokens antigos podem não possuir este claim;
+     * nesse caso o filtro mantém compatibilidade usando o subject (e-mail).
+     */
+    public Long getUsuarioId(String tokenJWT) {
+        try {
+            Algorithm algoritmo = Algorithm.HMAC256(secret);
+            return JWT.require(algoritmo)
+                    .withIssuer("conecta21-api")
+                    .build()
+                    .verify(tokenJWT)
+                    .getClaim("usuario_id").asLong();
+        } catch (JWTVerificationException exception) {
+            throw new RuntimeException("Token JWT inválido ou expirado.", exception);
         }
     }
 

@@ -4,10 +4,11 @@ import java.time.LocalDateTime;
 
 public record ArtigoRespostaDTO(
         Long id,
-        String titulos,
+        String titulo,
         String conteudo,
         Long autorId,
         String nomeAutor,
+        Long categoriaId,
         String nomeCategoria,
         LocalDateTime dataCriacao
 ) {
