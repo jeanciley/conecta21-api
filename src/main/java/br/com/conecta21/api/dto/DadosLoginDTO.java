@@ -1,4 +1,10 @@
 package br.com.conecta21.api.dto;
 
-public record DadosLoginDTO(String email, String senha) {
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+
+public record DadosLoginDTO(
+        @NotBlank @Email String email,
+        @NotBlank String senha
+) {
 }

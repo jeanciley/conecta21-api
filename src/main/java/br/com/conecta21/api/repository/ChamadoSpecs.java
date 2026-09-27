@@ -2,6 +2,7 @@ package br.com.conecta21.api.repository;
 
 import br.com.conecta21.api.model.Chamado;
 import br.com.conecta21.api.model.StatusChamado;
+import br.com.conecta21.api.model.TipoChamado;
 import jakarta.persistence.criteria.Predicate;
 import org.springframework.data.jpa.domain.Specification;
 
@@ -28,11 +29,12 @@ public final class ChamadoSpecs {
             Long tecnicoId,
             LocalDateTime dataInicio,
             LocalDateTime dataFim,
-            boolean interno) {
+            boolean interno,
+            List<TipoChamado> tipos,
+            String busca) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
 
-            // Cláusula principal: trava do SaaS.
             predicates.add(cb.equal(root.get("empresa").get("id"), empresaId));
             predicates.add(cb.equal(root.get("interno"), interno));
 
@@ -47,6 +49,17 @@ public final class ChamadoSpecs {
             }
             if (dataFim != null) {
                 predicates.add(cb.lessThanOrEqualTo(root.get("dataAbertura"), dataFim));
+            }
+
+            if (tipos != null && !tipos.isEmpty()) {
+                predicates.add(root.get("tipo").in(tipos));
+            }
+
+            if (busca != null && !busca.isBlank()) {
+                String termo = "%" + busca.trim().toLowerCase(java.util.Locale.ROOT) + "%";
+                predicates.add(cb.or(
+                        cb.like(cb.lower(root.get("titulo")), termo),
+                        cb.like(cb.lower(root.get("descricao")), termo)));
             }
 
             return cb.and(predicates.toArray(new Predicate[0]));

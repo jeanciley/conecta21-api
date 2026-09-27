@@ -1,6 +1,7 @@
 package br.com.conecta21.api.security;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -17,6 +18,7 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import java.util.Arrays;
 import java.util.List;
 
 @Configuration
@@ -26,14 +28,19 @@ public class SecurityConfig {
     @Autowired
     private SecurityFilter securityFilter;
 
+    @Value("${app.cors.allowed-origins:http://localhost:3000,http://localhost:5173,http://localhost:5500,http://127.0.0.1:5500,http://localhost:4200}")
+    private String corsAllowedOrigins;
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         return http
-                .cors(cors -> cors.configurationSource(corsConfigurationSource())) // Habilita requisições do frontend
-                .csrf(csrf -> csrf.disable()) // Desabilita proteção CSRF pois usaremos JWT (Stateless)
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                .csrf(csrf -> csrf.disable())
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .exceptionHandling(ex -> ex.authenticationEntryPoint((request, response, authException) ->
+                        response.sendError(401, "Não autenticado.")))
                 .authorizeHttpRequests(req -> {
-                    // Rotas públicas (Cadastro e Login)
+                    req.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll();
                     req.requestMatchers(HttpMethod.POST, "/api/auth").permitAll();
                     req.requestMatchers(HttpMethod.POST, "/api/empresas").permitAll();
                     req.requestMatchers(HttpMethod.POST, "/api/auth/ativacao", "/api/auth/esqueci-senha", "/api/auth/redefinir-senha").permitAll();
@@ -42,14 +49,15 @@ public class SecurityConfig {
                             "/v3/api-docs",
                             "/v3/api-docs/**",
                             "/swagger-ui.html",
-                            "/swagger-ui/**"
+                            "/swagger-ui/**",
+                            "/actuator/**"
                     ).permitAll();
-                    // Qualquer outra rota exige o Token JWT
                     req.anyRequest().authenticated();
                 })
-                .addFilterBefore(securityFilter, UsernamePasswordAuthenticationFilter.class) // Injeta o nosso filtro antes do padrão
+                .addFilterBefore(securityFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();
     }
+
     @Bean
     public AuthenticationManager authenticationManager(AuthenticationConfiguration configuration) throws Exception {
         return configuration.getAuthenticationManager();
@@ -57,20 +65,31 @@ public class SecurityConfig {
 
     @Bean
     public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder(); // Garante que as senhas sejam salvas e comparadas usando hash
+        return new BCryptPasswordEncoder();
     }
 
+    // ÚNICO BEAN DE CORS MANTIDO E COMBINADO
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        // Na produção, trocar o "*" pela URL exata do frontend (ex: http://localhost:5173)
-        configuration.setAllowedOrigins(List.of("*"));
-        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
+
+        // AllowedOrigins: Libere explicitamente as origens em desenvolvimento
+        configuration.setAllowedOrigins(Arrays.stream(corsAllowedOrigins.split(","))
+                .map(String::trim)
+                .filter(origin -> !origin.isEmpty())
+                .toList());
+
+        // AllowedMethods
+        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+
+        // AllowedHeaders
+        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "Cache-Control"));
+
+        // ExposedHeaders: Importante para downloads de arquivos (anexos)
+        configuration.setExposedHeaders(Arrays.asList("Content-Disposition", "Location"));
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
         return source;
     }
-
 }

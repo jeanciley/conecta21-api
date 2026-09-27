@@ -4,7 +4,6 @@ import br.com.conecta21.api.dto.ArtigoCriacaoDTO;
 import br.com.conecta21.api.dto.ArtigoRespostaDTO;
 import br.com.conecta21.api.model.ArtigoFaq;
 import br.com.conecta21.api.model.Categoria;
-import br.com.conecta21.api.model.PerfilUsuario;
 import br.com.conecta21.api.model.Usuario;
 import br.com.conecta21.api.repository.ArtigoFaqRepository;
 import br.com.conecta21.api.repository.CategoriaRepository;
@@ -13,6 +12,7 @@ import jakarta.persistence.EntityNotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
 import java.util.List;
 
 @Service

@@ -22,7 +22,11 @@ create table `usuarios` (
                             `data_criacao` datetime default CURRENT_TIMESTAMP,
                             `ativo` bit not null default b'1',
                             `excluido_em` datetime default null,
+                            `excluido` bit not null default b'0',
                             `perfil_customizado_id` bigint default null,
+                            `avatar_nome_original` varchar(255) default null,
+                            `avatar_tipo_mime` varchar(120) default null,
+                            `avatar_caminho_relativo` varchar(500) default null,
                             primary key (`id`),
                             unique key `email` (`email`),
                             key `fk_usuario_empresa` (`empresa_id`),
@@ -41,6 +45,8 @@ create table `chamados` (
                             `data_fechamento` datetime default null,
                             `prioridade` varchar(50) not null default 'BAIXA',
                             `interno` bit not null default b'0',
+                            `tipo` varchar(30) not null default 'SUPORTE_EXTERNO',
+                            `excluido` bit not null default b'0',
                             `data_limite_resolucao` datetime default null,
                             `prioridade_id` bigint default null,
                             `categoria_id` bigint default null,
@@ -56,6 +62,18 @@ create table `chamados` (
                             constraint `fk_chamado_solicitante` foreign key (`solicitante_id`) references `usuarios` (`id`),
                             constraint `fk_chamado_tecnico` foreign key (`tecnico_id`) references `usuarios` (`id`)
 ) engine = InnoDB auto_increment = 6 default CHARSET = utf8mb4 collate = utf8mb4_0900_ai_ci;
+
+CREATE TABLE `anexos_chamados` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `chamado_id` BIGINT NOT NULL,
+  `nome_original` VARCHAR(255) NOT NULL,
+  `nome_armazenado` VARCHAR(255) NOT NULL UNIQUE,
+  `tipo_mime` VARCHAR(120) NULL,
+  `tamanho_bytes` BIGINT NOT NULL,
+  `caminho_relativo` VARCHAR(500) NOT NULL,
+  `data_upload` DATETIME NOT NULL,
+  CONSTRAINT `fk_anexo_chamado` FOREIGN KEY (`chamado_id`) REFERENCES `chamados` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE `prioridades` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
@@ -78,6 +96,19 @@ CREATE TABLE `perfis_customizados` (
   `ativo` BIT NOT NULL DEFAULT b'1',
   UNIQUE KEY `uk_perfil_empresa_nome` (`empresa_id`, `nome`),
   CONSTRAINT `fk_perfil_empresa` FOREIGN KEY (`empresa_id`) REFERENCES `empresas` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `logs_auditoria` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `empresa_id` BIGINT NOT NULL,
+  `usuario_id` BIGINT NOT NULL,
+  `nome_usuario` VARCHAR(255) NOT NULL,
+  `acao` VARCHAR(255) NOT NULL,
+  `entidade` VARCHAR(255) NOT NULL,
+  `entidade_id` BIGINT NOT NULL,
+  `detalhes` TEXT NULL,
+  `data_criacao` DATETIME NOT NULL,
+  KEY `idx_auditoria_entidade` (`empresa_id`, `entidade`, `entidade_id`, `data_criacao`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 create table `interacoes_chamado` (
@@ -155,7 +186,8 @@ CREATE TABLE artigos_faq (
                              categoria_id BIGINT NOT NULL,
                              titulo VARCHAR(150) NOT NULL,
                              conteudo TEXT NOT NULL,
-                             data_criacao DATETIME,
+                             data_criacao DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                             excluido BIT NOT NULL DEFAULT b'0',
                              FOREIGN KEY (empresa_id) REFERENCES empresas(id),
                              FOREIGN KEY (autor_id) REFERENCES usuarios(id),
                              CONSTRAINT fk_artigo_categoria FOREIGN KEY (categoria_id) REFERENCES categorias(id)
