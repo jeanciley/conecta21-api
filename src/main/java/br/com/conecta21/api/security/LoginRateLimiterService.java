@@ -5,6 +5,7 @@ import io.github.bucket4j.Bucket;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -13,8 +14,25 @@ public class LoginRateLimiterService {
 
     private final Map<String, Bucket> cache = new ConcurrentHashMap<>();
 
-    public Bucket resolverBucket(String email) {
-        return cache.computeIfAbsent(email, this::criarNovoBucket);
+    public boolean estaBloqueado(String email) {
+        return resolverBucket(email).getAvailableTokens() == 0;
+    }
+
+    public void registrarFalha(String email) {
+        resolverBucket(email).tryConsume(1);
+    }
+
+    public void limparTentativas(String email) {
+        cache.remove(normalizar(email));
+    }
+
+    private Bucket resolverBucket(String email) {
+        String chave = normalizar(email);
+        return cache.computeIfAbsent(chave, this::criarNovoBucket);
+    }
+
+    private String normalizar(String email) {
+        return email == null ? "" : email.trim().toLowerCase(Locale.ROOT);
     }
 
     private Bucket criarNovoBucket(String email) {

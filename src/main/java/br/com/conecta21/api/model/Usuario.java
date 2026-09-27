@@ -17,7 +17,7 @@ import java.util.List;
 @Setter
 @Entity
 @Table(name = "usuarios")
-@SQLDelete(sql = "UPDATE usuarios SET excluido = true WHERE id = ?")
+@SQLDelete(sql = "UPDATE usuarios SET ativo = false, excluido = true, excluido_em = CURRENT_TIMESTAMP WHERE id = ?")
 @SQLRestriction("excluido = false")
 public class Usuario implements UserDetails {
 
@@ -48,6 +48,25 @@ public class Usuario implements UserDetails {
     @Column(name = "ativo", nullable = false)
     private boolean ativo;
 
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "perfil_customizado_id")
+    private PerfilCustomizado perfilCustomizado;
+
+    @Column(name = "excluido_em")
+    private LocalDateTime excluidoEm;
+
+    @Column(nullable = false)
+    private boolean excluido = false;
+
+    @Column(name = "avatar_nome_original", length = 255)
+    private String avatarNomeOriginal;
+
+    @Column(name = "avatar_tipo_mime", length = 120)
+    private String avatarTipoMime;
+
+    @Column(name = "avatar_caminho_relativo", length = 500)
+    private String avatarCaminhoRelativo;
+
     @PrePersist
     protected void onCreate() {
         this.dataCriacao = LocalDateTime.now();
@@ -56,7 +75,22 @@ public class Usuario implements UserDetails {
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
         // Agora extraímos o nome da constante do Enum
-        return List.of(new SimpleGrantedAuthority("ROLE_" + this.perfil.name()));
+        List<SimpleGrantedAuthority> authorities = new java.util.ArrayList<>();
+        authorities.add(new SimpleGrantedAuthority("ROLE_" + this.perfil.name()));
+        if (perfilCustomizado != null) {
+            authorities.add(new SimpleGrantedAuthority("ROLE_CUSTOM"));
+            for (String permission : perfilCustomizado.getPermissoes().split(",")) {
+                if (!permission.isBlank()) authorities.add(new SimpleGrantedAuthority("PERM_" + permission.trim()));
+            }
+        }
+        return authorities;
+    }
+
+    public boolean temPermissao(String permissao) {
+        if (perfil == PerfilUsuario.ADMIN) return true;
+        if (perfil == PerfilUsuario.TECNICO && ("CHAMADOS_INTERNOS".equals(permissao) || "GERAR_RELATORIOS".equals(permissao))) return true;
+        return perfilCustomizado != null && perfilCustomizado.isAtivo()
+                && java.util.Arrays.stream(perfilCustomizado.getPermissoes().split(",")).anyMatch(permissao::equals);
     }
 
     @Override
@@ -79,5 +113,5 @@ public class Usuario implements UserDetails {
     public boolean isCredentialsNonExpired() { return true; }
 
     @Override
-    public boolean isEnabled() { return ativo; }
+    public boolean isEnabled() { return ativo && !excluido && excluidoEm == null; }
 }

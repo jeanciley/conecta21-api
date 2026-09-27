@@ -13,4 +13,9 @@ public record KanbanCardDTO(
         LocalDateTime dataAbertura,
         LocalDateTime dataLimiteResolucao
 ) {
+    public KanbanCardDTO(Long id, String titulo, String prioridade, String status,
+                         Long solicitanteId, Long tecnicoId,
+                         LocalDateTime dataAbertura, LocalDateTime dataLimiteResolucao) {
+        this(id, titulo, prioridade, status, null, solicitanteId, tecnicoId, dataAbertura, dataLimiteResolucao);
+    }
 }

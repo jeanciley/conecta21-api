@@ -52,6 +52,9 @@ public class InteracaoChamadoService {
     @Autowired
     private TenantContext tenantContext;
 
+    @Autowired
+    private ChamadoService chamadoService;
+
     @Transactional
     public InteracaoRespostaDTO comentar(Long chamadoId, InteracaoCriacaoDTO dto) {
         return comentar(chamadoId, dto, List.of());
@@ -71,14 +74,13 @@ public class InteracaoChamadoService {
         Chamado chamado = chamadoRepository.findByIdAndEmpresaId(chamadoId, empresaId)
                 .orElseThrow(() -> new EntityNotFoundException("Chamado não encontrado."));
 
+        chamadoService.exigirAcessoInterno(chamado);
         if (!autor.getEmpresa().getId().equals(chamado.getEmpresa().getId())) {
             throw new AccessDeniedException("Divergência de tenant entre token e usuário.");
         }
 
         InteracaoChamado interacao = new InteracaoChamado();
-        if ((autor.getPerfil() == br.com.conecta21.api.model.PerfilUsuario.TECNICO
-                || autor.getPerfil() == br.com.conecta21.api.model.PerfilUsuario.ADMIN)
-                && chamado.getDataPrimeiraResposta() == null) {
+        if (autor.temPermissao("CHAMADOS_INTERNOS") && chamado.getDataPrimeiraResposta() == null) {
             chamado.setDataPrimeiraResposta(java.time.LocalDateTime.now());
         }
         interacao.setChamado(chamado);
@@ -131,6 +133,7 @@ public class InteracaoChamadoService {
             throw new EntityNotFoundException("Chamado não encontrado.");
         }
 
+        chamadoService.exigirAcessoInterno(chamadoRepository.findByIdAndEmpresaId(chamadoId, empresaId).orElseThrow());
         return interacaoRepository
                 .findAllByChamadoIdAndChamadoEmpresaIdOrderByDataCriacaoAsc(chamadoId, empresaId, pageable)
                 .map(this::toResposta);
@@ -142,12 +145,14 @@ public class InteracaoChamadoService {
         InteracaoChamado interacao = interacaoRepository
                 .findByIdAndChamadoIdAndChamadoEmpresaId(interacaoId, chamadoId, empresaId)
                 .orElseThrow(() -> new EntityNotFoundException("Interação não encontrada."));
+        chamadoService.exigirAcessoInterno(interacao.getChamado());
         return toResposta(interacao);
     }
 
     @Transactional(readOnly = true)
     public AnexoArquivoDTO baixarAnexo(Long chamadoId, Long interacaoId, Long anexoId) {
         Long empresaId = tenantContext.getEmpresaIdAutenticada();
+        chamadoService.exigirAcessoInterno(chamadoRepository.findByIdAndEmpresaId(chamadoId, empresaId).orElseThrow());
         AnexoInteracao anexo = anexoInteracaoRepository
                 .findByIdAndInteracaoIdAndInteracaoChamadoIdAndInteracaoChamadoEmpresaId(
                         anexoId, interacaoId, chamadoId, empresaId)

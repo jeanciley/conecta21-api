@@ -40,6 +40,6 @@ public class PrioridadeService {
         return dto(repository.save(p));
     }
 
-    private void exigirAdmin() { if (tenant.getUsuarioAutenticado().getPerfil() != PerfilUsuario.ADMIN) throw new AccessDeniedException("Apenas administradores podem gerenciar prioridades."); }
+    private void exigirAdmin() { if (!tenant.getUsuarioAutenticado().temPermissao("GERENCIAR_PRIORIDADES")) throw new AccessDeniedException("Sem permissão para gerenciar prioridades."); }
     private PrioridadeDTO dto(Prioridade p) { return new PrioridadeDTO(p.getId(), p.getNome(), p.getSlaRespostaMinutos(), p.getSlaResolucaoMinutos(), p.isAtiva()); }
 }

@@ -8,7 +8,10 @@ import br.com.conecta21.api.model.Chamado;
 import br.com.conecta21.api.model.Categoria;
 import br.com.conecta21.api.model.PerfilUsuario;
 import br.com.conecta21.api.model.StatusChamado;
+import br.com.conecta21.api.model.TipoChamado;
 import br.com.conecta21.api.model.Usuario;
+import br.com.conecta21.api.dto.KanbanCardDTO;
+import br.com.conecta21.api.dto.KanbanResponseDTO;
 import br.com.conecta21.api.repository.ChamadoRepository;
 import br.com.conecta21.api.repository.ChamadoSpecs;
 import br.com.conecta21.api.repository.CategoriaRepository;
@@ -68,6 +71,8 @@ public class ChamadoService {
     private ApplicationEventPublisher eventPublisher;
 
     @Transactional
+    @CacheEvict(value = "kanban_empresa", allEntries = true)
+    @AuditarAcao(acao = "CRIACAO", entidade = "Chamado")
     public ChamadoRespostaDTO criar(ChamadoCriacaoDTO dto) {
         return criarInterno(dto, List.of());
     }
@@ -93,6 +98,14 @@ public class ChamadoService {
         chamado.setTitulo(dto.titulo());
         chamado.setDescricao(dto.descricao());
         chamado.setStatus(StatusChamado.ABERTO);
+        TipoChamado tipoChamado = dto.tipo() != null ? dto.tipo()
+                : (dto.interno() ? TipoChamado.TI_INTERNO : TipoChamado.SUPORTE_EXTERNO);
+        boolean interno = dto.interno() || tipoChamado == TipoChamado.TI_INTERNO;
+        if (interno && !solicitante.temPermissao("CHAMADOS_INTERNOS")) {
+            throw new AccessDeniedException("Sem permissÃ£o para abrir chamados internos.");
+        }
+        chamado.setInterno(interno);
+        chamado.setTipo(tipoChamado);
         Categoria categoria = categoriaRepository.findByIdAndEmpresaId(dto.categoriaId(), empresaId)
                 .filter(Categoria::isAtiva)
                 .orElseThrow(() -> new IllegalArgumentException("Categoria ativa não encontrada."));
@@ -107,15 +120,18 @@ public class ChamadoService {
         chamado.setSlaResolucaoMinutosSnapshot(prioridade.getSlaResolucaoMinutos());
 
         if (dto.tecnicoId() != null) {
-            if (solicitante.getPerfil() != PerfilUsuario.ADMIN) throw new AccessDeniedException("Apenas o administrador pode atribuir o chamado durante a abertura.");
+            if (!solicitante.temPermissao("GERENCIAR_CHAMADOS")) throw new AccessDeniedException("Sem permissão para atribuir o chamado durante a abertura.");
             Usuario tecnico = usuarioRepository.findById(dto.tecnicoId())
                     .orElseThrow(() -> new IllegalArgumentException("Técnico não encontrado."));
-            if (!empresaId.equals(tecnico.getEmpresa().getId()) || tecnico.getPerfil() != PerfilUsuario.TECNICO || !tecnico.isAtivo())
+            if (!empresaId.equals(tecnico.getEmpresa().getId()) || !tecnico.isAtivo()
+                    || !(tecnico.getPerfil() == PerfilUsuario.TECNICO || tecnico.temPermissao("CHAMADOS_INTERNOS") || tecnico.temPermissao("GERENCIAR_CHAMADOS")))
                 throw new AccessDeniedException("O responsável selecionado não é um técnico ativo desta empresa.");
             chamado.setTecnico(tecnico);
         }
 
-        return toResposta(chamadoRepository.save(chamado), solicitante.getPerfil() == PerfilUsuario.USUARIO);
+        Chamado salvo = chamadoRepository.save(chamado);
+        anexoChamadoService.salvarAnexos(salvo, arquivos);
+        return toResposta(salvo, deveOcultarPrioridade());
     }
 
     @Transactional(readOnly = true)
@@ -123,55 +139,64 @@ public class ChamadoService {
             String statusFiltro, Long tecnicoId,
             LocalDateTime dataInicio, LocalDateTime dataFim,
             Pageable pageable) {
-        return listar(statusFiltro, tecnicoId, dataInicio, dataFim, null, null, pageable);
+        return listar(statusFiltro, tecnicoId, dataInicio, dataFim, false, pageable);
     }
 
     @Transactional(readOnly = true)
     public Page<ChamadoRespostaDTO> listar(
             String statusFiltro, Long tecnicoId,
-            LocalDateTime dataInicio, LocalDateTime dataFim,
-            String busca, List<String> tiposFiltro, Pageable pageable) { // Adicionado o tiposFiltro
+            LocalDateTime dataInicio, LocalDateTime dataFim, boolean interno,
+            Pageable pageable) {
+        return listar(statusFiltro, tecnicoId, dataInicio, dataFim, interno, null, null, pageable);
+    }
 
+    @Transactional(readOnly = true)
+    public Page<ChamadoRespostaDTO> listar(
+            String statusFiltro, Long tecnicoId,
+            LocalDateTime dataInicio, LocalDateTime dataFim, boolean interno,
+            String busca, List<String> tiposFiltro, Pageable pageable) {
         Long empresaId = tenantContext.getEmpresaIdAutenticada();
-        StatusChamado status = converterStatusOpcional(statusFiltro);
-        List<TipoChamado> tipos = converterTipos(tiposFiltro); // Converte os tipos enviados
-
-        if (busca != null && !busca.isBlank()) {
-            Pageable paginaSemOrdenacaoExterna = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
-            return chamadoRepository
-                    .pesquisarFullText(
-                            empresaId,
-                            busca.trim(),
-                            status != null ? status.name() : null,
-                            tecnicoId,
-                            dataInicio,
-                            dataFim,
-                            paginaSemOrdenacaoExterna) // NOTA: Se você for usar tipos na busca FullText, precisará alterar a query nativa do repositório também!
-                    .map(this::toResposta);
+        Usuario usuario = tenantContext.getUsuarioAutenticado();
+        if (interno && !usuario.temPermissao("CHAMADOS_INTERNOS")) {
+            throw new AccessDeniedException("Sem permissÃ£o para consultar chamados internos.");
         }
-
+        StatusChamado status = converterStatusOpcional(statusFiltro);
+        List<TipoChamado> tipos = converterTipos(tiposFiltro);
         boolean ocultarPrioridade = deveOcultarPrioridade();
         return chamadoRepository
-                .findAll(ChamadoSpecs.noTenantComFiltros(empresaId, status, tecnicoId, dataInicio, dataFim), pageable)
+                .findAll(ChamadoSpecs.noTenantComFiltros(empresaId, status, tecnicoId, dataInicio, dataFim, interno, tipos, busca), pageable)
                 .map(chamado -> toResposta(chamado, ocultarPrioridade));
     }
 
     @Transactional(readOnly = true)
     public ChamadoRespostaDTO detalhar(Long id) {
         boolean ocultarPrioridade = deveOcultarPrioridade();
-        return toResposta(buscarNoTenant(id), ocultarPrioridade);
+        Chamado chamado = buscarNoTenant(id);
+        exigirAcessoInterno(chamado);
+        return toResposta(chamado, ocultarPrioridade);
     }
 
     // A chave do cache agora junta o ID da empresa com os tipos solicitados
-    @Cacheable(value = "kanban_empresa", key = "@tenantContext.getEmpresaIdAutenticada() + '-' + (#tiposFiltro != null ? #tiposFiltro.toString() : 'TODOS')")
+    @Transactional(readOnly = true)
+    public KanbanResponseDTO obterKanban(Long tecnicoId, LocalDateTime dataInicio,
+                                          LocalDateTime dataFim, Integer limite) {
+        return obterKanban(tecnicoId, dataInicio, dataFim, limite, null, false);
+    }
+
+    @Cacheable(value = "kanban_empresa", key = "@tenantContext.getEmpresaIdAutenticada() + '-' + @tenantContext.getUsuarioAutenticado().getId() + '-' + #tecnicoId + '-' + #dataInicio + '-' + #dataFim + '-' + #limite + '-' + #tiposFiltro + '-' + #interno")
     @Transactional(readOnly = true)
     public KanbanResponseDTO obterKanban(
             Long tecnicoId,
             LocalDateTime dataInicio, LocalDateTime dataFim,
             Integer limite,
-            List<String> tiposFiltro) { // Novo parâmetro recebido do Controller
+            List<String> tiposFiltro,
+            boolean interno) {
 
         Long empresaId = tenantContext.getEmpresaIdAutenticada();
+        Usuario usuario = tenantContext.getUsuarioAutenticado();
+        if (interno && !usuario.temPermissao("CHAMADOS_INTERNOS")) {
+            throw new AccessDeniedException("Sem permissÃ£o para consultar chamados internos.");
+        }
         List<TipoChamado> tipos = converterTipos(tiposFiltro);
 
         int porColuna = limite != null ? limite : LIMITE_KANBAN_PADRAO;
@@ -182,28 +207,29 @@ public class ChamadoService {
         Pageable paginaColuna = PageRequest.of(0, porColuna, Sort.by(Sort.Direction.DESC, "dataAbertura"));
 
         return new KanbanResponseDTO(
-                buscarColuna(empresaId, StatusChamado.ABERTO, tecnicoId, dataInicio, dataFim, tipos, paginaColuna),
-                buscarColuna(empresaId, StatusChamado.EM_ANDAMENTO, tecnicoId, dataInicio, dataFim, tipos, paginaColuna),
-                buscarColuna(empresaId, StatusChamado.EM_ATRASO, tecnicoId, dataInicio, dataFim, tipos, paginaColuna),
-                buscarColuna(empresaId, StatusChamado.RESOLVIDO, tecnicoId, dataInicio, dataFim, tipos, paginaColuna));
+                buscarColuna(empresaId, StatusChamado.ABERTO, tecnicoId, dataInicio, dataFim, tipos, interno, paginaColuna),
+                buscarColuna(empresaId, StatusChamado.EM_ANDAMENTO, tecnicoId, dataInicio, dataFim, tipos, interno, paginaColuna),
+                buscarColuna(empresaId, StatusChamado.EM_ATRASO, tecnicoId, dataInicio, dataFim, tipos, interno, paginaColuna),
+                buscarColuna(empresaId, StatusChamado.RESOLVIDO, tecnicoId, dataInicio, dataFim, tipos, interno, paginaColuna));
     }
 
-    @CacheEvict(value = "kanban_empresa", key = "#{@tenantContext.getEmpresaIdAutenticada()}")
+    @CacheEvict(value = "kanban_empresa", allEntries = true)
     @AuditarAcao(acao = "ALTERACAO_STATUS", entidade = "Chamado")
     @Transactional
     public ChamadoRespostaDTO alterarStatus(Long id, ChamadoStatusDTO dto) {
         StatusChamado novoStatus = converterStatusObrigatorio(dto.status());
         Chamado chamado = buscarNoTenant(id);
+        exigirAcessoInterno(chamado);
         StatusChamado statusAnterior = chamado.getStatus();
 
         if (statusAnterior == novoStatus) {
-            return toResposta(chamado);
+            return toResposta(chamado, deveOcultarPrioridade());
         }
 
         // CORREÇÃO: Lógica duplicada de buscarNoTenant e verificação de perfil removidas.
         if (StatusChamado.RESOLVIDO.equals(novoStatus)) {
             Usuario ator = tenantContext.getUsuarioAutenticado();
-            if (ator.getPerfil() != PerfilUsuario.TECNICO && ator.getPerfil() != PerfilUsuario.ADMIN) {
+            if (!ator.temPermissao("GERENCIAR_CHAMADOS") && ator.getPerfil() != PerfilUsuario.TECNICO) {
                 throw new AccessDeniedException("Apenas técnico ou administrador pode marcar o chamado como RESOLVIDO.");
             }
         }
@@ -217,6 +243,8 @@ public class ChamadoService {
         } else {
             chamado.setDataFechamento(null);
         }
+
+        publicarAlteracaoStatus(chamado, statusAnterior, novoStatus);
 
         return toResposta(chamado, deveOcultarPrioridade());
     }
@@ -255,6 +283,37 @@ public class ChamadoService {
     private boolean deveOcultarPrioridade() {
         Usuario usuario = tenantContext.getUsuarioAutenticado();
         return usuario != null && usuario.getPerfil() == PerfilUsuario.USUARIO;
+    }
+
+    public void exigirAcessoInterno(Chamado chamado) {
+        Usuario usuario = tenantContext.getUsuarioAutenticado();
+        if (chamado.isInterno() && !usuario.temPermissao("CHAMADOS_INTERNOS")) throw new EntityNotFoundException("Chamado não encontrado.");
+    }
+
+    private List<TipoChamado> converterTipos(List<String> tiposFiltro) {
+        if (tiposFiltro == null || tiposFiltro.isEmpty()) return List.of();
+        try {
+            return tiposFiltro.stream().filter(tipo -> tipo != null && !tipo.isBlank())
+                    .map(tipo -> TipoChamado.valueOf(tipo.trim().toUpperCase(java.util.Locale.ROOT)))
+                    .distinct().toList();
+        } catch (IllegalArgumentException ex) {
+            throw new IllegalArgumentException("Tipo de chamado inválido. Valores aceitos: SUPORTE_EXTERNO, TI_INTERNO, FACILITIES.");
+        }
+    }
+
+    private List<KanbanCardDTO> buscarColuna(Long empresaId, StatusChamado status, Long tecnicoId,
+                                              LocalDateTime dataInicio, LocalDateTime dataFim,
+                                              List<TipoChamado> tipos, boolean interno, Pageable pageable) {
+        boolean ocultarPrioridade = deveOcultarPrioridade();
+        return chamadoRepository.findAll(
+                        ChamadoSpecs.noTenantComFiltros(empresaId, status, tecnicoId, dataInicio, dataFim, interno, tipos, null),
+                        pageable)
+                .map(chamado -> new KanbanCardDTO(
+                        chamado.getId(), chamado.getTitulo(), ocultarPrioridade ? null : chamado.getPrioridade(), chamado.getStatus().name(),
+                        chamado.getTipo() == null ? null : chamado.getTipo().name(), chamado.getSolicitante().getId(),
+                        chamado.getTecnico() == null ? null : chamado.getTecnico().getId(),
+                        chamado.getDataAbertura(), chamado.getDataLimiteResolucao()))
+                .getContent();
     }
 
     private ChamadoRespostaDTO toResposta(Chamado chamado, boolean ocultarPrioridade) {

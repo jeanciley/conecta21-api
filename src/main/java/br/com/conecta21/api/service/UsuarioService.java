@@ -2,16 +2,33 @@ package br.com.conecta21.api.service;
 
 import br.com.conecta21.api.dto.UsuarioCadastroDTO;
 import br.com.conecta21.api.dto.UsuarioRespostaDTO;
+import br.com.conecta21.api.dto.UsuarioPerfilRespostaDTO;
+import br.com.conecta21.api.dto.UsuarioPerfilAtualizacaoDTO;
+import br.com.conecta21.api.dto.UsuarioTrocaSenhaDTO;
+import br.com.conecta21.api.dto.UsuarioListaDTO;
+import jakarta.persistence.EntityNotFoundException;
 import br.com.conecta21.api.model.Usuario;
 import br.com.conecta21.api.model.PerfilUsuario;
 import br.com.conecta21.api.security.TenantContext;
 import br.com.conecta21.api.repository.UsuarioRepository;
+import br.com.conecta21.api.repository.PerfilCustomizadoRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.Resource;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Path;
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 public class UsuarioService {
@@ -20,22 +37,29 @@ public class UsuarioService {
     private static final Set<String> EXTENSOES_AVATAR = Set.of("png", "jpg", "jpeg", "webp");
     private static final Set<String> MIMES_AVATAR = Set.of("image/png", "image/jpeg", "image/webp");
 
-    private final UsuarioRepository usuarioRepository;
-    private final PasswordEncoder passwordEncoder;
-    private final TenantContext tenantContext;
-    private final ArquivoStorageService storageService;
+    @Autowired
+    private UsuarioRepository usuarioRepository;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
 
     @Autowired
     private TenantContext tenantContext;
 
     @Autowired
+    private ArquivoStorageService storageService;
+
+    @Autowired
     private FluxoSenhaService fluxoSenhaService;
+
+    @Autowired
+    private PerfilCustomizadoRepository perfilRepository;
 
     @Transactional
     public Usuario cadastrarMembro(UsuarioCadastroDTO dto) {
 
         Usuario adminLogado = tenantContext.getUsuarioAutenticado();
-        if (adminLogado.getPerfil() != PerfilUsuario.ADMIN || dto.perfil() == PerfilUsuario.ADMIN) {
+        if (!adminLogado.temPermissao("GERENCIAR_USUARIOS") || dto.perfil() == PerfilUsuario.ADMIN) {
             throw new org.springframework.security.access.AccessDeniedException(
                     "Apenas administradores podem cadastrar membros técnicos ou usuários.");
         }
@@ -46,6 +70,14 @@ public class UsuarioService {
         novoUsuario.setSenha(passwordEncoder.encode(java.util.UUID.randomUUID().toString()));
 
         novoUsuario.setPerfil(dto.perfil());
+
+        if (dto.perfilCustomizadoId() != null) {
+            var perfil = perfilRepository.findByIdAndEmpresaId(dto.perfilCustomizadoId(), adminLogado.getEmpresa().getId())
+                    .filter(p -> p.isAtivo()).orElseThrow(() -> new IllegalArgumentException("Perfil personalizado não encontrado ou inativo."));
+            novoUsuario.setPerfil(PerfilUsuario.USUARIO);
+            novoUsuario.setPerfilCustomizado(perfil);
+        }
+
         novoUsuario.setEmpresa(adminLogado.getEmpresa());
         novoUsuario.setAtivo(false);
 
@@ -56,6 +88,7 @@ public class UsuarioService {
 
     @Transactional(readOnly = true)
     public List<UsuarioRespostaDTO> listarMembros() {
+        if (!tenantContext.getUsuarioAutenticado().temPermissao("GERENCIAR_USUARIOS")) throw new org.springframework.security.access.AccessDeniedException("Sem permissÃ£o para consultar usuÃ¡rios.");
         Long empresaId = tenantContext.getEmpresaIdAutenticada();
         return usuarioRepository.findAllByEmpresaId(empresaId).stream()
                 .map(this::toResposta)
@@ -67,8 +100,24 @@ public class UsuarioService {
         return toResposta(tenantContext.getUsuarioAutenticado());
     }
 
+    @Transactional
+    public void excluir(Long id) {
+        Usuario ator = tenantContext.getUsuarioAutenticado();
+        if (!ator.temPermissao("GERENCIAR_USUARIOS")) throw new org.springframework.security.access.AccessDeniedException("Sem permissão para excluir usuários.");
+        if (ator.getId().equals(id)) throw new IllegalArgumentException("Não é permitido excluir o próprio usuário.");
+        Usuario alvo = usuarioRepository.findById(id).filter(u -> u.getEmpresa().getId().equals(ator.getEmpresa().getId()))
+                .orElseThrow(() -> new EntityNotFoundException("Usuário não encontrado."));
+        alvo.setAtivo(false);
+        alvo.setExcluido(true);
+        alvo.setExcluidoEm(LocalDateTime.now());
+    }
+
     private UsuarioRespostaDTO toResposta(Usuario usuario) {
-        return new UsuarioRespostaDTO(usuario.getId(), usuario.getNome(), usuario.getEmail(), usuario.getPerfil(), usuario.isAtivo());
+        return new UsuarioRespostaDTO(usuario.getId(), usuario.getNome(), usuario.getEmail(), usuario.getPerfil(),
+                usuario.getPerfilCustomizado() != null ? usuario.getPerfilCustomizado().getNome() : usuario.getPerfil().name(),
+                usuario.getPerfilCustomizado() != null ? usuario.getPerfilCustomizado().getId() : null,
+                usuario.isAtivo(), usuario.getExcluidoEm() != null,
+                java.util.Set.of("CHAMADOS_INTERNOS", "GERENCIAR_CHAMADOS", "GERENCIAR_CATEGORIAS", "GERENCIAR_PRIORIDADES", "GERENCIAR_USUARIOS", "GERENCIAR_FAQ", "GERAR_RELATORIOS").stream().filter(usuario::temPermissao).collect(java.util.stream.Collectors.toSet()));
     }
 
     @Transactional(readOnly = true)
@@ -257,6 +306,9 @@ public class UsuarioService {
     @Transactional(readOnly = true)
     public List<UsuarioListaDTO> listarMembrosDaEmpresa() {
         Usuario adminLogado = tenantContext.getUsuarioAutenticado();
+        if (!adminLogado.temPermissao("GERENCIAR_USUARIOS")) {
+            throw new org.springframework.security.access.AccessDeniedException("Sem permissÃ£o para consultar usuÃ¡rios.");
+        }
 
         return usuarioRepository.findByEmpresaId(adminLogado.getEmpresa().getId())
                 .stream()

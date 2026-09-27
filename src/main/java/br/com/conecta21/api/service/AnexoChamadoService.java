@@ -3,6 +3,7 @@ package br.com.conecta21.api.service;
 import br.com.conecta21.api.dto.AnexoRespostaDTO;
 import br.com.conecta21.api.model.AnexoChamado;
 import br.com.conecta21.api.model.Chamado;
+import br.com.conecta21.api.model.Usuario;
 import br.com.conecta21.api.repository.AnexoChamadoRepository;
 import br.com.conecta21.api.repository.ChamadoRepository;
 import br.com.conecta21.api.security.TenantContext;
@@ -53,6 +54,7 @@ public class AnexoChamadoService {
     @Transactional
     public List<AnexoRespostaDTO> adicionar(Long chamadoId, List<MultipartFile> arquivos) {
         Chamado chamado = buscarChamadoNoTenant(chamadoId);
+        exigirAcessoInterno(chamado);
         salvarAnexos(chamado, arquivos);
         return listar(chamadoId);
     }
@@ -61,6 +63,7 @@ public class AnexoChamadoService {
     public List<AnexoRespostaDTO> listar(Long chamadoId) {
         Long empresaId = tenantContext.getEmpresaIdAutenticada();
         garantirChamadoNoTenant(chamadoId, empresaId);
+        exigirAcessoInterno(buscarChamadoNoTenant(chamadoId));
         return anexoRepository
                 .findAllByChamadoIdAndChamadoEmpresaIdOrderByDataUploadAsc(chamadoId, empresaId)
                 .stream()
@@ -71,6 +74,7 @@ public class AnexoChamadoService {
     @Transactional(readOnly = true)
     public AnexoDownload carregar(Long chamadoId, Long anexoId) {
         Long empresaId = tenantContext.getEmpresaIdAutenticada();
+        exigirAcessoInterno(buscarChamadoNoTenant(chamadoId));
         AnexoChamado anexo = anexoRepository
                 .findByIdAndChamadoIdAndChamadoEmpresaId(anexoId, chamadoId, empresaId)
                 .orElseThrow(() -> new EntityNotFoundException("Anexo não encontrado."));
@@ -124,6 +128,13 @@ public class AnexoChamadoService {
     private void garantirChamadoNoTenant(Long chamadoId, Long empresaId) {
         if (chamadoRepository.findByIdAndEmpresaId(chamadoId, empresaId).isEmpty()) {
             throw new EntityNotFoundException("Chamado não encontrado.");
+        }
+    }
+
+    private void exigirAcessoInterno(Chamado chamado) {
+        Usuario usuario = tenantContext.getUsuarioAutenticado();
+        if (chamado.isInterno() && (usuario == null || !usuario.temPermissao("CHAMADOS_INTERNOS"))) {
+            throw new EntityNotFoundException("Chamado nÃ£o encontrado.");
         }
     }
 

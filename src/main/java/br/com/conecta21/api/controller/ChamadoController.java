@@ -27,19 +27,6 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.List;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PatchMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
-
-import java.net.URI;
-import java.time.LocalDateTime;
 
 @RestController
 @RequestMapping("/api/chamados")
@@ -73,12 +60,11 @@ public class ChamadoController {
             @RequestParam(required = false) Long tecnicoId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime dataInicio,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime dataFim,
+            @RequestParam(defaultValue = "false") boolean interno,
             @RequestParam(required = false) String busca,
-            @RequestParam(required = false) List<String> tipos, // Novo parâmetro adicionado
-            @PageableDefault(size = 10, sort = "dataAbertura", direction = Sort.Direction.DESC) Pageable pageable) {
-
-        Page<ChamadoRespostaDTO> resposta = chamadoService.listar(status, tecnicoId, dataInicio, dataFim, busca, tipos, pageable);
-        return ResponseEntity.ok(resposta);
+            @RequestParam(required = false) List<String> tipos,
+            @PageableDefault(size = 20, sort = "dataAbertura", direction = Sort.Direction.DESC) Pageable pageable) {
+        return ResponseEntity.ok(chamadoService.listar(status, tecnicoId, dataInicio, dataFim, interno, busca, tipos, pageable));
     }
 
     @GetMapping("/{id}")
@@ -92,9 +78,10 @@ public class ChamadoController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime dataInicio,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime dataFim,
             @RequestParam(required = false) Integer limite,
-            @RequestParam(required = false) List<String> tipos) { // Novo parâmetro adicionado
+            @RequestParam(required = false) List<String> tipos,
+            @RequestParam(defaultValue = "false") boolean interno) {
 
-        KanbanResponseDTO resposta = chamadoService.obterKanban(tecnicoId, dataInicio, dataFim, limite, tipos);
+        KanbanResponseDTO resposta = chamadoService.obterKanban(tecnicoId, dataInicio, dataFim, limite, tipos, interno);
         return ResponseEntity.ok(resposta);
     }
 

@@ -57,6 +57,9 @@ public class Chamado {
     @Column(nullable = false, length = 50)
     private String prioridade;
 
+    @Column(name = "interno", nullable = false)
+    private boolean interno;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "prioridade_id")
     private Prioridade prioridadeConfigurada;

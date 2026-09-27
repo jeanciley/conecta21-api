@@ -24,14 +24,19 @@ public final class ChamadoSpecs {
     }
 
     public static Specification<Chamado> noTenantComFiltros(
-            Long empresaId, StatusChamado status, Long tecnicoId,
-            LocalDateTime dataInicio, LocalDateTime dataFim,
-            List<TipoChamado> tipos) { // Novo parâmetro
-
+            Long empresaId,
+            StatusChamado status,
+            Long tecnicoId,
+            LocalDateTime dataInicio,
+            LocalDateTime dataFim,
+            boolean interno,
+            List<TipoChamado> tipos,
+            String busca) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
 
             predicates.add(cb.equal(root.get("empresa").get("id"), empresaId));
+            predicates.add(cb.equal(root.get("interno"), interno));
 
             if (status != null) {
                 predicates.add(cb.equal(root.get("status"), status));
@@ -46,9 +51,15 @@ public final class ChamadoSpecs {
                 predicates.add(cb.lessThanOrEqualTo(root.get("dataAbertura"), dataFim));
             }
 
-            // NOVA LÓGICA: Se o front-end enviou os tipos, filtra por eles
             if (tipos != null && !tipos.isEmpty()) {
                 predicates.add(root.get("tipo").in(tipos));
+            }
+
+            if (busca != null && !busca.isBlank()) {
+                String termo = "%" + busca.trim().toLowerCase(java.util.Locale.ROOT) + "%";
+                predicates.add(cb.or(
+                        cb.like(cb.lower(root.get("titulo")), termo),
+                        cb.like(cb.lower(root.get("descricao")), termo)));
             }
 
             return cb.and(predicates.toArray(new Predicate[0]));

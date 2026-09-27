@@ -30,7 +30,7 @@ public class CategoriaService {
     @Transactional
     public CategoriaRespostaDTO criar(CategoriaCriacaoDTO dto) {
         Usuario usuarioLogado = tenantContext.getUsuarioAutenticado();
-        if (usuarioLogado.getPerfil() != PerfilUsuario.ADMIN) throw new AccessDeniedException("Apenas administradores podem gerenciar categorias.");
+        if (!usuarioLogado.temPermissao("GERENCIAR_CATEGORIAS")) throw new AccessDeniedException("Sem permissão para gerenciar categorias.");
 
         Categoria categoria = new Categoria();
         categoria.setNome(dto.nome());
@@ -40,15 +40,35 @@ public class CategoriaService {
 
         Categoria salva = categoriaRepository.save(categoria);
 
-        return new CategoriaRespostaDTO(salva.getId(), salva.getNome());
+        return toResposta(salva, true);
+    }
+
+    @Transactional
+    public CategoriaRespostaDTO atualizar(Long id, CategoriaCriacaoDTO dto) {
+        Usuario usuario = tenantContext.getUsuarioAutenticado();
+        if (!usuario.temPermissao("GERENCIAR_CATEGORIAS")) throw new AccessDeniedException("Sem permissão para gerenciar categorias.");
+        Categoria categoria = categoriaRepository.findByIdAndEmpresaId(id, usuario.getEmpresa().getId())
+                .orElseThrow(() -> new jakarta.persistence.EntityNotFoundException("Categoria não encontrada."));
+        categoria.setNome(dto.nome().trim());
+        categoria.setPrioridade(prioridadeRepository.findByIdAndEmpresaId(dto.prioridadeId(), usuario.getEmpresa().getId())
+                .filter(p -> p.isAtiva()).orElseThrow(() -> new IllegalArgumentException("Prioridade ativa não encontrada.")));
+        return toResposta(categoriaRepository.save(categoria), true);
     }
 
     @Transactional(readOnly = true)
     public List<CategoriaRespostaDTO> listar() {
-        Long empresaId = tenantContext.getEmpresaIdAutenticada();
+        Usuario ator = tenantContext.getUsuarioAutenticado();
+        Long empresaId = ator.getEmpresa().getId();
+        boolean podeGerenciar = ator.temPermissao("GERENCIAR_CATEGORIAS");
 
         return categoriaRepository.findAllByEmpresaId(empresaId).stream().filter(Categoria::isAtiva)
-                .map(cat -> new CategoriaRespostaDTO(cat.getId(), cat.getNome()))
+                .map(cat -> toResposta(cat, podeGerenciar))
                 .toList();
+    }
+
+    private CategoriaRespostaDTO toResposta(Categoria categoria, boolean incluirPrioridade) {
+        return new CategoriaRespostaDTO(categoria.getId(), categoria.getNome(),
+                incluirPrioridade && categoria.getPrioridade() != null ? categoria.getPrioridade().getId() : null,
+                incluirPrioridade && categoria.getPrioridade() != null ? categoria.getPrioridade().getNome() : null);
     }
 }

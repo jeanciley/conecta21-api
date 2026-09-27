@@ -4,7 +4,6 @@ import br.com.conecta21.api.dto.ArtigoCriacaoDTO;
 import br.com.conecta21.api.dto.ArtigoRespostaDTO;
 import br.com.conecta21.api.model.ArtigoFaq;
 import br.com.conecta21.api.model.Categoria;
-import br.com.conecta21.api.model.PerfilUsuario;
 import br.com.conecta21.api.model.Usuario;
 import br.com.conecta21.api.repository.ArtigoFaqRepository;
 import br.com.conecta21.api.repository.CategoriaRepository;
@@ -33,9 +32,7 @@ public class ArtigoFaqService {
         Usuario autorLogado = tenantContext.getUsuarioAutenticado();
         Long empresaId = autorLogado.getEmpresa().getId();
 
-        if (PerfilUsuario.USUARIO.equals(autorLogado.getPerfil())){
-            throw new IllegalArgumentException("Acesso negado. Apenas técnicos e administradores podem publicar artigos.");
-        }
+        if (!autorLogado.temPermissao("GERENCIAR_FAQ")) throw new org.springframework.security.access.AccessDeniedException("Sem permissão para publicar artigos.");
 
         if (artigoRepository.existsByTituloIgnoreCaseAndEmpresaId(dto.titulo(), empresaId)) {
             throw new IllegalArgumentException("Já existe um artigo com este título na sua base de conhecimento.");
@@ -49,9 +46,6 @@ public class ArtigoFaqService {
         artigo.setConteudo(dto.conteudo());
         artigo.setAutor(autorLogado);
         artigo.setEmpresa(autorLogado.getEmpresa());
-        artigo.setCategoria(categoria);
-
-        // CORREÇÃO: Setando a categoria validada no artigo antes de salvar
         artigo.setCategoria(categoria);
 
         ArtigoFaq salvo = artigoRepository.save(artigo);
@@ -89,6 +83,28 @@ public class ArtigoFaqService {
                 .toList();
     }
 
+    @Transactional
+    public ArtigoRespostaDTO atualizar(Long id, ArtigoCriacaoDTO dto) {
+        Usuario ator = tenantContext.getUsuarioAutenticado();
+        if (!ator.temPermissao("GERENCIAR_FAQ")) throw new org.springframework.security.access.AccessDeniedException("Sem permissão para editar artigos.");
+        Long empresaId = ator.getEmpresa().getId();
+        ArtigoFaq artigo = artigoRepository.findByIdAndEmpresaId(id, empresaId)
+                .orElseThrow(() -> new EntityNotFoundException("Artigo não encontrado."));
+        Categoria categoria = categoriaRepository.findByIdAndEmpresaId(dto.categoriaId(), empresaId)
+                .orElseThrow(() -> new IllegalArgumentException("Categoria não encontrada."));
+        artigo.setTitulo(dto.titulo().trim()); artigo.setConteudo(dto.conteudo().trim()); artigo.setCategoria(categoria);
+        return toRespostaDTO(artigoRepository.save(artigo));
+    }
+
+    @Transactional
+    public void excluir(Long id) {
+        Usuario ator = tenantContext.getUsuarioAutenticado();
+        if (!ator.temPermissao("GERENCIAR_FAQ")) throw new org.springframework.security.access.AccessDeniedException("Sem permissão para excluir artigos.");
+        ArtigoFaq artigo = artigoRepository.findByIdAndEmpresaId(id, ator.getEmpresa().getId())
+                .orElseThrow(() -> new EntityNotFoundException("Artigo não encontrado."));
+        artigoRepository.delete(artigo);
+    }
+
     private ArtigoRespostaDTO toRespostaDTO(ArtigoFaq artigo) {
         return new ArtigoRespostaDTO(
                 artigo.getId(),
@@ -96,8 +112,8 @@ public class ArtigoFaqService {
                 artigo.getConteudo(),
                 artigo.getAutor().getId(),
                 artigo.getAutor().getNome(),
-                // Agora o getCategoria() não retornará nulo
-                artigo.getCategoria() != null ? artigo.getCategoria().getNome() : null,
+                artigo.getCategoria().getId(),
+                artigo.getCategoria().getNome(),
                 artigo.getDataCriacao()
         );
     }
