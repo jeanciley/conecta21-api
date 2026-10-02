@@ -100,9 +100,17 @@ public class ChamadoService {
         chamado.setStatus(StatusChamado.ABERTO);
         TipoChamado tipoChamado = dto.tipo() != null ? dto.tipo()
                 : (dto.interno() ? TipoChamado.TI_INTERNO : TipoChamado.SUPORTE_EXTERNO);
-        boolean interno = dto.interno() || tipoChamado == TipoChamado.TI_INTERNO;
+        if (dto.interno() && tipoChamado == TipoChamado.SUPORTE_EXTERNO) {
+            tipoChamado = TipoChamado.TI_INTERNO;
+        }
+        boolean interno = dto.interno() || tipoChamado != TipoChamado.SUPORTE_EXTERNO;
         if (interno && !solicitante.temPermissao("CHAMADOS_INTERNOS")) {
             throw new AccessDeniedException("Sem permissÃ£o para abrir chamados internos.");
+        }
+        if (!interno && solicitante.getPerfil() == PerfilUsuario.USUARIO
+                && solicitante.temPermissao("CHAMADOS_INTERNOS")
+                && !solicitante.temPermissao("GERENCIAR_CHAMADOS")) {
+            throw new AccessDeniedException("Este perfil pode abrir somente chamados internos.");
         }
         chamado.setInterno(interno);
         chamado.setTipo(tipoChamado);
@@ -157,14 +165,13 @@ public class ChamadoService {
             String busca, List<String> tiposFiltro, Pageable pageable) {
         Long empresaId = tenantContext.getEmpresaIdAutenticada();
         Usuario usuario = tenantContext.getUsuarioAutenticado();
-        if (interno && !usuario.temPermissao("CHAMADOS_INTERNOS")) {
-            throw new AccessDeniedException("Sem permissÃ£o para consultar chamados internos.");
-        }
+        exigirTipoChamadoPermitido(usuario, interno);
         StatusChamado status = converterStatusOpcional(statusFiltro);
         List<TipoChamado> tipos = converterTipos(tiposFiltro);
         boolean ocultarPrioridade = deveOcultarPrioridade();
+        Long solicitanteId = podeGerenciarChamados(usuario) ? null : usuario.getId();
         return chamadoRepository
-                .findAll(ChamadoSpecs.noTenantComFiltros(empresaId, status, tecnicoId, dataInicio, dataFim, interno, tipos, busca), pageable)
+                .findAll(ChamadoSpecs.noTenantComFiltros(empresaId, status, tecnicoId, dataInicio, dataFim, interno, tipos, busca, solicitanteId), pageable)
                 .map(chamado -> toResposta(chamado, ocultarPrioridade));
     }
 
@@ -220,6 +227,9 @@ public class ChamadoService {
         StatusChamado novoStatus = converterStatusObrigatorio(dto.status());
         Chamado chamado = buscarNoTenant(id);
         exigirAcessoInterno(chamado);
+        if (!podeGerenciarChamados(tenantContext.getUsuarioAutenticado())) {
+            throw new AccessDeniedException("Somente a equipe de atendimento pode alterar o status do chamado.");
+        }
         StatusChamado statusAnterior = chamado.getStatus();
 
         if (statusAnterior == novoStatus) {
@@ -287,7 +297,28 @@ public class ChamadoService {
 
     public void exigirAcessoInterno(Chamado chamado) {
         Usuario usuario = tenantContext.getUsuarioAutenticado();
-        if (chamado.isInterno() && !usuario.temPermissao("CHAMADOS_INTERNOS")) throw new EntityNotFoundException("Chamado não encontrado.");
+        if (usuario.getPerfil() == PerfilUsuario.USUARIO
+                && chamado.isInterno() != usuario.temPermissao("CHAMADOS_INTERNOS")) {
+            throw new EntityNotFoundException("Chamado não encontrado.");
+        }
+        if (!podeGerenciarChamados(usuario) && !chamado.getSolicitante().getId().equals(usuario.getId())) {
+            throw new EntityNotFoundException("Chamado não encontrado.");
+        }
+    }
+
+    private void exigirTipoChamadoPermitido(Usuario usuario, boolean interno) {
+        if (usuario.getPerfil() == PerfilUsuario.USUARIO
+                && interno != usuario.temPermissao("CHAMADOS_INTERNOS")) {
+            throw new AccessDeniedException("Seu perfil não possui acesso a este tipo de chamado.");
+        }
+        if (interno && !usuario.temPermissao("CHAMADOS_INTERNOS")) {
+            throw new AccessDeniedException("Sem permissão para consultar chamados internos.");
+        }
+    }
+
+    private boolean podeGerenciarChamados(Usuario usuario) {
+        return usuario.getPerfil() == PerfilUsuario.ADMIN || usuario.getPerfil() == PerfilUsuario.TECNICO
+                || usuario.temPermissao("GERENCIAR_CHAMADOS");
     }
 
     private List<TipoChamado> converterTipos(List<String> tiposFiltro) {
@@ -306,7 +337,8 @@ public class ChamadoService {
                                               List<TipoChamado> tipos, boolean interno, Pageable pageable) {
         boolean ocultarPrioridade = deveOcultarPrioridade();
         return chamadoRepository.findAll(
-                        ChamadoSpecs.noTenantComFiltros(empresaId, status, tecnicoId, dataInicio, dataFim, interno, tipos, null),
+                        ChamadoSpecs.noTenantComFiltros(empresaId, status, tecnicoId, dataInicio, dataFim, interno, tipos, null,
+                                podeGerenciarChamados(tenantContext.getUsuarioAutenticado()) ? null : tenantContext.getUsuarioAutenticado().getId()),
                         pageable)
                 .map(chamado -> new KanbanCardDTO(
                         chamado.getId(), chamado.getTitulo(), ocultarPrioridade ? null : chamado.getPrioridade(), chamado.getStatus().name(),

@@ -4,11 +4,13 @@ import br.com.conecta21.api.dto.DashboardResponseDTO;
 import br.com.conecta21.api.model.Categoria;
 import br.com.conecta21.api.model.Chamado;
 import br.com.conecta21.api.model.StatusChamado;
+import br.com.conecta21.api.model.PerfilUsuario;
 import br.com.conecta21.api.repository.ChamadoRepository;
 import br.com.conecta21.api.security.TenantContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.security.access.AccessDeniedException;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -26,13 +28,31 @@ public class DashboardService {
 
     @Transactional(readOnly = true)
     public DashboardResponseDTO obterMetricasUltimos30Dias() {
+        var ator = tenantContext.getUsuarioAutenticado();
+        if (ator.getPerfil() == PerfilUsuario.USUARIO && ator.temPermissao("CHAMADOS_INTERNOS")) {
+            throw new AccessDeniedException("Este perfil deve usar o painel de chamados internos.");
+        }
+        return obterMetricas(false);
+    }
 
+    @Transactional(readOnly = true)
+    public DashboardResponseDTO obterMetricasChamadosInternos() {
+        if (!tenantContext.getUsuarioAutenticado().temPermissao("CHAMADOS_INTERNOS")) {
+            throw new AccessDeniedException("Sem permissÃ£o para consultar chamados internos.");
+        }
+        return obterMetricas(true);
+    }
+
+    private DashboardResponseDTO obterMetricas(boolean interno) {
         Long empresaId = tenantContext.getEmpresaIdAutenticada();
-        boolean incluirInternos = tenantContext.getUsuarioAutenticado().temPermissao("CHAMADOS_INTERNOS");
+        var ator = tenantContext.getUsuarioAutenticado();
+        boolean equipe = ator.getPerfil() == PerfilUsuario.ADMIN || ator.getPerfil() == PerfilUsuario.TECNICO
+                || ator.temPermissao("GERENCIAR_CHAMADOS");
         LocalDateTime trintaDiasAtras = LocalDateTime.now().minusDays(30);
 
         List<Chamado> chamadosRecentes = chamadoRepository.findAllByEmpresaId(empresaId).stream()
-                .filter(chamado -> incluirInternos || !chamado.isInterno())
+                .filter(chamado -> chamado.isInterno() == interno)
+                .filter(chamado -> equipe || chamado.getSolicitante().getId().equals(ator.getId()))
                 .filter(chamado -> chamado.getDataAbertura() != null && chamado.getDataAbertura().isAfter(trintaDiasAtras))
                 .toList();
 
