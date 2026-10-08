@@ -12,6 +12,16 @@ create table `empresas` (
                             unique key `cnpj` (`cnpj`)
 ) engine = InnoDB auto_increment = 7 default CHARSET = utf8mb4 collate = utf8mb4_0900_ai_ci;
 
+CREATE TABLE `empresa_modulos` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    `empresa_id` BIGINT NOT NULL,
+    `codigo` VARCHAR(60) NOT NULL,
+    `ativo` BIT NOT NULL DEFAULT b'0',
+    `contratado_em` DATETIME NULL,
+    UNIQUE KEY `uk_empresa_modulo_codigo` (`empresa_id`, `codigo`),
+    CONSTRAINT `fk_empresa_modulos_empresa` FOREIGN KEY (`empresa_id`) REFERENCES `empresas` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 create table `usuarios` (
                             `id` bigint not null auto_increment,
                             `empresa_id` bigint not null,
@@ -74,6 +84,30 @@ CREATE TABLE `anexos_chamados` (
   `data_upload` DATETIME NOT NULL,
   CONSTRAINT `fk_anexo_chamado` FOREIGN KEY (`chamado_id`) REFERENCES `chamados` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `gmuds` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `empresa_id` BIGINT NOT NULL,
+  `ticket_id` BIGINT NOT NULL,
+  `responsavel_id` BIGINT NOT NULL,
+  `modelo_utilizado` VARCHAR(100) NOT NULL,
+  `ambiente` VARCHAR(40) NOT NULL,
+  `data_agendada` DATETIME NOT NULL,
+  `riscos_impactos` TEXT NOT NULL,
+  `status_aprovacao` VARCHAR(30) NOT NULL DEFAULT 'PENDENTE',
+  `caminho_arquivo_gerado` VARCHAR(500) NULL,
+  `data_criacao` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY `idx_gmud_empresa_ticket` (`empresa_id`, `ticket_id`),
+  KEY `idx_gmud_responsavel` (`responsavel_id`),
+  CONSTRAINT `fk_gmud_empresa` FOREIGN KEY (`empresa_id`) REFERENCES `empresas` (`id`),
+  CONSTRAINT `fk_gmud_ticket` FOREIGN KEY (`ticket_id`) REFERENCES `chamados` (`id`),
+  CONSTRAINT `fk_gmud_responsavel` FOREIGN KEY (`responsavel_id`) REFERENCES `usuarios` (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+ALTER TABLE `anexos_chamados`
+  ADD COLUMN `gmud_id` BIGINT NULL,
+  ADD KEY `idx_anexo_gmud` (`gmud_id`),
+  ADD CONSTRAINT `fk_anexo_gmud` FOREIGN KEY (`gmud_id`) REFERENCES `gmuds` (`id`) ON DELETE SET NULL;
 
 CREATE TABLE `prioridades` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,

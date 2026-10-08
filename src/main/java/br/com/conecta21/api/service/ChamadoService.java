@@ -4,12 +4,15 @@ import br.com.conecta21.api.aop.AuditarAcao;
 import br.com.conecta21.api.dto.ChamadoCriacaoDTO;
 import br.com.conecta21.api.dto.ChamadoRespostaDTO;
 import br.com.conecta21.api.dto.ChamadoStatusDTO;
+import br.com.conecta21.api.dto.ChamadoResponsavelAlteracaoDTO;
+import br.com.conecta21.api.dto.ResponsavelChamadoDTO;
 import br.com.conecta21.api.model.Chamado;
 import br.com.conecta21.api.model.Categoria;
 import br.com.conecta21.api.model.PerfilUsuario;
 import br.com.conecta21.api.model.StatusChamado;
 import br.com.conecta21.api.model.TipoChamado;
 import br.com.conecta21.api.model.Usuario;
+import br.com.conecta21.api.model.InteracaoChamado;
 import br.com.conecta21.api.dto.KanbanCardDTO;
 import br.com.conecta21.api.dto.KanbanResponseDTO;
 import br.com.conecta21.api.repository.ChamadoRepository;
@@ -18,6 +21,7 @@ import br.com.conecta21.api.repository.CategoriaRepository;
 import br.com.conecta21.api.model.Prioridade;
 import br.com.conecta21.api.repository.EmpresaRepository;
 import br.com.conecta21.api.repository.UsuarioRepository;
+import br.com.conecta21.api.repository.InteracaoChamadoRepository;
 import br.com.conecta21.api.security.TenantContext;
 import jakarta.persistence.EntityNotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,6 +39,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Comparator;
 
 /**
  * Motor operacional de chamados.
@@ -57,6 +62,9 @@ public class ChamadoService {
 
     @Autowired
     private UsuarioRepository usuarioRepository;
+
+    @Autowired
+    private InteracaoChamadoRepository interacaoRepository;
 
     @Autowired
     private CategoriaRepository categoriaRepository;
@@ -100,9 +108,17 @@ public class ChamadoService {
         chamado.setStatus(StatusChamado.ABERTO);
         TipoChamado tipoChamado = dto.tipo() != null ? dto.tipo()
                 : (dto.interno() ? TipoChamado.TI_INTERNO : TipoChamado.SUPORTE_EXTERNO);
-        boolean interno = dto.interno() || tipoChamado == TipoChamado.TI_INTERNO;
+        if (dto.interno() && tipoChamado == TipoChamado.SUPORTE_EXTERNO) {
+            tipoChamado = TipoChamado.TI_INTERNO;
+        }
+        boolean interno = dto.interno() || tipoChamado != TipoChamado.SUPORTE_EXTERNO;
         if (interno && !solicitante.temPermissao("CHAMADOS_INTERNOS")) {
             throw new AccessDeniedException("Sem permissÃ£o para abrir chamados internos.");
+        }
+        if (!interno && solicitante.getPerfil() == PerfilUsuario.USUARIO
+                && solicitante.temPermissao("CHAMADOS_INTERNOS")
+                && !solicitante.temPermissao("GERENCIAR_CHAMADOS")) {
+            throw new AccessDeniedException("Este perfil pode abrir somente chamados internos.");
         }
         chamado.setInterno(interno);
         chamado.setTipo(tipoChamado);
@@ -119,15 +135,7 @@ public class ChamadoService {
         chamado.setSlaRespostaMinutosSnapshot(prioridade.getSlaRespostaMinutos());
         chamado.setSlaResolucaoMinutosSnapshot(prioridade.getSlaResolucaoMinutos());
 
-        if (dto.tecnicoId() != null) {
-            if (!solicitante.temPermissao("GERENCIAR_CHAMADOS")) throw new AccessDeniedException("Sem permissão para atribuir o chamado durante a abertura.");
-            Usuario tecnico = usuarioRepository.findById(dto.tecnicoId())
-                    .orElseThrow(() -> new IllegalArgumentException("Técnico não encontrado."));
-            if (!empresaId.equals(tecnico.getEmpresa().getId()) || !tecnico.isAtivo()
-                    || !(tecnico.getPerfil() == PerfilUsuario.TECNICO || tecnico.temPermissao("CHAMADOS_INTERNOS") || tecnico.temPermissao("GERENCIAR_CHAMADOS")))
-                throw new AccessDeniedException("O responsável selecionado não é um técnico ativo desta empresa.");
-            chamado.setTecnico(tecnico);
-        }
+        chamado.setTecnico(selecionarTecnicoComMenorCarga(empresaId));
 
         Chamado salvo = chamadoRepository.save(chamado);
         anexoChamadoService.salvarAnexos(salvo, arquivos);
@@ -157,14 +165,13 @@ public class ChamadoService {
             String busca, List<String> tiposFiltro, Pageable pageable) {
         Long empresaId = tenantContext.getEmpresaIdAutenticada();
         Usuario usuario = tenantContext.getUsuarioAutenticado();
-        if (interno && !usuario.temPermissao("CHAMADOS_INTERNOS")) {
-            throw new AccessDeniedException("Sem permissÃ£o para consultar chamados internos.");
-        }
+        exigirTipoChamadoPermitido(usuario, interno);
         StatusChamado status = converterStatusOpcional(statusFiltro);
         List<TipoChamado> tipos = converterTipos(tiposFiltro);
         boolean ocultarPrioridade = deveOcultarPrioridade();
+        Long solicitanteId = podeGerenciarChamados(usuario) ? null : usuario.getId();
         return chamadoRepository
-                .findAll(ChamadoSpecs.noTenantComFiltros(empresaId, status, tecnicoId, dataInicio, dataFim, interno, tipos, busca), pageable)
+                .findAll(ChamadoSpecs.noTenantComFiltros(empresaId, status, tecnicoId, dataInicio, dataFim, interno, tipos, busca, solicitanteId), pageable)
                 .map(chamado -> toResposta(chamado, ocultarPrioridade));
     }
 
@@ -220,6 +227,9 @@ public class ChamadoService {
         StatusChamado novoStatus = converterStatusObrigatorio(dto.status());
         Chamado chamado = buscarNoTenant(id);
         exigirAcessoInterno(chamado);
+        if (!podeGerenciarChamados(tenantContext.getUsuarioAutenticado())) {
+            throw new AccessDeniedException("Somente a equipe de atendimento pode alterar o status do chamado.");
+        }
         StatusChamado statusAnterior = chamado.getStatus();
 
         if (statusAnterior == novoStatus) {
@@ -247,6 +257,68 @@ public class ChamadoService {
         publicarAlteracaoStatus(chamado, statusAnterior, novoStatus);
 
         return toResposta(chamado, deveOcultarPrioridade());
+    }
+
+    @Transactional(readOnly = true)
+    public List<ResponsavelChamadoDTO> listarResponsaveis(Long id) {
+        Usuario ator = tenantContext.getUsuarioAutenticado();
+        if (!podeGerenciarChamados(ator)) {
+            throw new AccessDeniedException("Somente técnicos e administradores podem repassar chamados.");
+        }
+        Chamado chamado = buscarNoTenant(id);
+        exigirAcessoInterno(chamado);
+        return listarTecnicosAtivos(chamado.getEmpresa().getId()).stream()
+                .map(usuario -> new ResponsavelChamadoDTO(usuario.getId(), usuario.getNome(), usuario.getPerfil().name()))
+                .toList();
+    }
+
+    @Transactional
+    @CacheEvict(value = "kanban_empresa", allEntries = true)
+    @AuditarAcao(acao = "TRANSFERENCIA_RESPONSAVEL", entidade = "Chamado")
+    public ChamadoRespostaDTO transferirResponsavel(Long id, ChamadoResponsavelAlteracaoDTO dto) {
+        Usuario ator = tenantContext.getUsuarioAutenticado();
+        if (!podeGerenciarChamados(ator)) {
+            throw new AccessDeniedException("Somente técnicos e administradores podem repassar chamados.");
+        }
+        Chamado chamado = buscarNoTenant(id);
+        exigirAcessoInterno(chamado);
+
+        Usuario novoResponsavel = listarTecnicosAtivos(chamado.getEmpresa().getId()).stream()
+                .filter(usuario -> usuario.getId().equals(dto.responsavelId()))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("O novo responsável não é um técnico ativo desta empresa."));
+        Usuario responsavelAnterior = chamado.getTecnico();
+        if (responsavelAnterior != null && responsavelAnterior.getId().equals(novoResponsavel.getId())) {
+            return toResposta(chamado, deveOcultarPrioridade());
+        }
+
+        chamado.setTecnico(novoResponsavel);
+        InteracaoChamado historico = new InteracaoChamado();
+        historico.setChamado(chamado);
+        historico.setAutor(usuarioRepository.getReferenceById(ator.getId()));
+        historico.setTipo("Transferência");
+        String origem = responsavelAnterior == null ? "Sem responsável" : responsavelAnterior.getNome();
+        historico.setMensagem("Chamado repassado de " + origem + " para " + novoResponsavel.getNome() + ".");
+        interacaoRepository.save(historico);
+
+        return toResposta(chamado, deveOcultarPrioridade());
+    }
+
+    private Usuario selecionarTecnicoComMenorCarga(Long empresaId) {
+        List<StatusChamado> emAtendimento = List.of(
+                StatusChamado.ABERTO, StatusChamado.EM_ANDAMENTO, StatusChamado.EM_ATRASO);
+        List<Usuario> tecnicos = usuarioRepository.findAllByEmpresaIdAndPerfilInAndAtivoTrueOrderByNomeAsc(
+                empresaId, List.of(PerfilUsuario.TECNICO));
+        return tecnicos.stream()
+                .min(Comparator.comparingLong((Usuario tecnico) ->
+                                chamadoRepository.countByEmpresaIdAndTecnicoIdAndStatusIn(empresaId, tecnico.getId(), emAtendimento))
+                        .thenComparing(Usuario::getId))
+                .orElseThrow(() -> new IllegalStateException("Não há técnicos ativos para receber novos chamados."));
+    }
+
+    private List<Usuario> listarTecnicosAtivos(Long empresaId) {
+        return usuarioRepository.findAllByEmpresaIdAndPerfilInAndAtivoTrueOrderByNomeAsc(
+                empresaId, List.of(PerfilUsuario.TECNICO, PerfilUsuario.ADMIN));
     }
 
     private void publicarAlteracaoStatus(Chamado chamado, StatusChamado anterior, StatusChamado novo) {
@@ -287,7 +359,28 @@ public class ChamadoService {
 
     public void exigirAcessoInterno(Chamado chamado) {
         Usuario usuario = tenantContext.getUsuarioAutenticado();
-        if (chamado.isInterno() && !usuario.temPermissao("CHAMADOS_INTERNOS")) throw new EntityNotFoundException("Chamado não encontrado.");
+        if (usuario.getPerfil() == PerfilUsuario.USUARIO
+                && chamado.isInterno() != usuario.temPermissao("CHAMADOS_INTERNOS")) {
+            throw new EntityNotFoundException("Chamado não encontrado.");
+        }
+        if (!podeGerenciarChamados(usuario) && !chamado.getSolicitante().getId().equals(usuario.getId())) {
+            throw new EntityNotFoundException("Chamado não encontrado.");
+        }
+    }
+
+    private void exigirTipoChamadoPermitido(Usuario usuario, boolean interno) {
+        if (usuario.getPerfil() == PerfilUsuario.USUARIO
+                && interno != usuario.temPermissao("CHAMADOS_INTERNOS")) {
+            throw new AccessDeniedException("Seu perfil não possui acesso a este tipo de chamado.");
+        }
+        if (interno && !usuario.temPermissao("CHAMADOS_INTERNOS")) {
+            throw new AccessDeniedException("Sem permissão para consultar chamados internos.");
+        }
+    }
+
+    private boolean podeGerenciarChamados(Usuario usuario) {
+        return usuario.getPerfil() == PerfilUsuario.ADMIN || usuario.getPerfil() == PerfilUsuario.TECNICO
+                || usuario.temPermissao("GERENCIAR_CHAMADOS");
     }
 
     private List<TipoChamado> converterTipos(List<String> tiposFiltro) {
@@ -306,7 +399,8 @@ public class ChamadoService {
                                               List<TipoChamado> tipos, boolean interno, Pageable pageable) {
         boolean ocultarPrioridade = deveOcultarPrioridade();
         return chamadoRepository.findAll(
-                        ChamadoSpecs.noTenantComFiltros(empresaId, status, tecnicoId, dataInicio, dataFim, interno, tipos, null),
+                        ChamadoSpecs.noTenantComFiltros(empresaId, status, tecnicoId, dataInicio, dataFim, interno, tipos, null,
+                                podeGerenciarChamados(tenantContext.getUsuarioAutenticado()) ? null : tenantContext.getUsuarioAutenticado().getId()),
                         pageable)
                 .map(chamado -> new KanbanCardDTO(
                         chamado.getId(), chamado.getTitulo(), ocultarPrioridade ? null : chamado.getPrioridade(), chamado.getStatus().name(),

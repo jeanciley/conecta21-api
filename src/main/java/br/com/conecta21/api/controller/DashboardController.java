@@ -20,4 +20,9 @@ public class DashboardController {
         DashboardResponseDTO metricas = dashboardService.obterMetricasUltimos30Dias();
         return ResponseEntity.ok(metricas);
     }
+
+    @GetMapping("/internos")
+    public ResponseEntity<DashboardResponseDTO> obterMetricasInternos() {
+        return ResponseEntity.ok(dashboardService.obterMetricasChamadosInternos());
+    }
 }

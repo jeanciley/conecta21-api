@@ -13,6 +13,7 @@ import org.springframework.stereotype.Repository;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.Collection;
 
 @Repository
 public interface ChamadoRepository extends JpaRepository<Chamado, Long>, JpaSpecificationExecutor<Chamado> {
@@ -35,6 +36,8 @@ public interface ChamadoRepository extends JpaRepository<Chamado, Long>, JpaSpec
     );
 
     List<Chamado> findAllByEmpresaIdAndSolicitanteId(Long empresaId, Long solicitanteId);
+
+    long countByEmpresaIdAndTecnicoIdAndStatusIn(Long empresaId, Long tecnicoId, Collection<StatusChamado> status);
 
     @Query(
             value = """

@@ -32,11 +32,19 @@ public final class ChamadoSpecs {
             boolean interno,
             List<TipoChamado> tipos,
             String busca) {
+        return noTenantComFiltros(empresaId, status, tecnicoId, dataInicio, dataFim, interno, tipos, busca, null);
+    }
+
+    public static Specification<Chamado> noTenantComFiltros(
+            Long empresaId, StatusChamado status, Long tecnicoId,
+            LocalDateTime dataInicio, LocalDateTime dataFim, boolean interno,
+            List<TipoChamado> tipos, String busca, Long solicitanteId) {
         return (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
 
             predicates.add(cb.equal(root.get("empresa").get("id"), empresaId));
             predicates.add(cb.equal(root.get("interno"), interno));
+            if (solicitanteId != null) predicates.add(cb.equal(root.get("solicitante").get("id"), solicitanteId));
 
             if (status != null) {
                 predicates.add(cb.equal(root.get("status"), status));
