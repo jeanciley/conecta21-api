@@ -6,6 +6,7 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.Optional;
+import br.com.conecta21.api.model.PerfilUsuario;
 
 @Repository
 public interface UsuarioRepository extends JpaRepository<Usuario, Long> {
@@ -21,4 +22,6 @@ public interface UsuarioRepository extends JpaRepository<Usuario, Long> {
     boolean existsByEmailAndIdNot(String email, Long id);
 
     List<Usuario> findByEmpresaId(Long empresaId);
+
+    List<Usuario> findAllByEmpresaIdAndPerfilInAndAtivoTrueOrderByNomeAsc(Long empresaId, List<PerfilUsuario> perfis);
 }

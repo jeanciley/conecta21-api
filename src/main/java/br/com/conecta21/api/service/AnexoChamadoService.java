@@ -64,8 +64,13 @@ public class AnexoChamadoService {
         Long empresaId = tenantContext.getEmpresaIdAutenticada();
         garantirChamadoNoTenant(chamadoId, empresaId);
         exigirAcessoInterno(buscarChamadoNoTenant(chamadoId));
-        return anexoRepository
-                .findAllByChamadoIdAndChamadoEmpresaIdOrderByDataUploadAsc(chamadoId, empresaId)
+        Usuario usuario = tenantContext.getUsuarioAutenticado();
+        boolean equipe = usuario.getPerfil() == br.com.conecta21.api.model.PerfilUsuario.ADMIN
+                || usuario.getPerfil() == br.com.conecta21.api.model.PerfilUsuario.TECNICO;
+        List<AnexoChamado> anexos = equipe
+                ? anexoRepository.findAllByChamadoIdAndChamadoEmpresaIdOrderByDataUploadAsc(chamadoId, empresaId)
+                : anexoRepository.findAllByChamadoIdAndChamadoEmpresaIdAndGmudIsNullOrderByDataUploadAsc(chamadoId, empresaId);
+        return anexos
                 .stream()
                 .map(this::toResposta)
                 .toList();
@@ -78,6 +83,14 @@ public class AnexoChamadoService {
         AnexoChamado anexo = anexoRepository
                 .findByIdAndChamadoIdAndChamadoEmpresaId(anexoId, chamadoId, empresaId)
                 .orElseThrow(() -> new EntityNotFoundException("Anexo não encontrado."));
+
+        if (anexo.getGmud() != null) {
+            Usuario usuario = tenantContext.getUsuarioAutenticado();
+            if (usuario.getPerfil() != br.com.conecta21.api.model.PerfilUsuario.ADMIN
+                    && usuario.getPerfil() != br.com.conecta21.api.model.PerfilUsuario.TECNICO) {
+                throw new EntityNotFoundException("Anexo n\u00e3o encontrado.");
+            }
+        }
 
         Resource resource;
         try {

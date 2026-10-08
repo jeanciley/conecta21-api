@@ -4,12 +4,15 @@ import br.com.conecta21.api.aop.AuditarAcao;
 import br.com.conecta21.api.dto.ChamadoCriacaoDTO;
 import br.com.conecta21.api.dto.ChamadoRespostaDTO;
 import br.com.conecta21.api.dto.ChamadoStatusDTO;
+import br.com.conecta21.api.dto.ChamadoResponsavelAlteracaoDTO;
+import br.com.conecta21.api.dto.ResponsavelChamadoDTO;
 import br.com.conecta21.api.model.Chamado;
 import br.com.conecta21.api.model.Categoria;
 import br.com.conecta21.api.model.PerfilUsuario;
 import br.com.conecta21.api.model.StatusChamado;
 import br.com.conecta21.api.model.TipoChamado;
 import br.com.conecta21.api.model.Usuario;
+import br.com.conecta21.api.model.InteracaoChamado;
 import br.com.conecta21.api.dto.KanbanCardDTO;
 import br.com.conecta21.api.dto.KanbanResponseDTO;
 import br.com.conecta21.api.repository.ChamadoRepository;
@@ -18,6 +21,7 @@ import br.com.conecta21.api.repository.CategoriaRepository;
 import br.com.conecta21.api.model.Prioridade;
 import br.com.conecta21.api.repository.EmpresaRepository;
 import br.com.conecta21.api.repository.UsuarioRepository;
+import br.com.conecta21.api.repository.InteracaoChamadoRepository;
 import br.com.conecta21.api.security.TenantContext;
 import jakarta.persistence.EntityNotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,6 +39,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Comparator;
 
 /**
  * Motor operacional de chamados.
@@ -57,6 +62,9 @@ public class ChamadoService {
 
     @Autowired
     private UsuarioRepository usuarioRepository;
+
+    @Autowired
+    private InteracaoChamadoRepository interacaoRepository;
 
     @Autowired
     private CategoriaRepository categoriaRepository;
@@ -127,15 +135,7 @@ public class ChamadoService {
         chamado.setSlaRespostaMinutosSnapshot(prioridade.getSlaRespostaMinutos());
         chamado.setSlaResolucaoMinutosSnapshot(prioridade.getSlaResolucaoMinutos());
 
-        if (dto.tecnicoId() != null) {
-            if (!solicitante.temPermissao("GERENCIAR_CHAMADOS")) throw new AccessDeniedException("Sem permissão para atribuir o chamado durante a abertura.");
-            Usuario tecnico = usuarioRepository.findById(dto.tecnicoId())
-                    .orElseThrow(() -> new IllegalArgumentException("Técnico não encontrado."));
-            if (!empresaId.equals(tecnico.getEmpresa().getId()) || !tecnico.isAtivo()
-                    || !(tecnico.getPerfil() == PerfilUsuario.TECNICO || tecnico.temPermissao("CHAMADOS_INTERNOS") || tecnico.temPermissao("GERENCIAR_CHAMADOS")))
-                throw new AccessDeniedException("O responsável selecionado não é um técnico ativo desta empresa.");
-            chamado.setTecnico(tecnico);
-        }
+        chamado.setTecnico(selecionarTecnicoComMenorCarga(empresaId));
 
         Chamado salvo = chamadoRepository.save(chamado);
         anexoChamadoService.salvarAnexos(salvo, arquivos);
@@ -257,6 +257,68 @@ public class ChamadoService {
         publicarAlteracaoStatus(chamado, statusAnterior, novoStatus);
 
         return toResposta(chamado, deveOcultarPrioridade());
+    }
+
+    @Transactional(readOnly = true)
+    public List<ResponsavelChamadoDTO> listarResponsaveis(Long id) {
+        Usuario ator = tenantContext.getUsuarioAutenticado();
+        if (!podeGerenciarChamados(ator)) {
+            throw new AccessDeniedException("Somente técnicos e administradores podem repassar chamados.");
+        }
+        Chamado chamado = buscarNoTenant(id);
+        exigirAcessoInterno(chamado);
+        return listarTecnicosAtivos(chamado.getEmpresa().getId()).stream()
+                .map(usuario -> new ResponsavelChamadoDTO(usuario.getId(), usuario.getNome(), usuario.getPerfil().name()))
+                .toList();
+    }
+
+    @Transactional
+    @CacheEvict(value = "kanban_empresa", allEntries = true)
+    @AuditarAcao(acao = "TRANSFERENCIA_RESPONSAVEL", entidade = "Chamado")
+    public ChamadoRespostaDTO transferirResponsavel(Long id, ChamadoResponsavelAlteracaoDTO dto) {
+        Usuario ator = tenantContext.getUsuarioAutenticado();
+        if (!podeGerenciarChamados(ator)) {
+            throw new AccessDeniedException("Somente técnicos e administradores podem repassar chamados.");
+        }
+        Chamado chamado = buscarNoTenant(id);
+        exigirAcessoInterno(chamado);
+
+        Usuario novoResponsavel = listarTecnicosAtivos(chamado.getEmpresa().getId()).stream()
+                .filter(usuario -> usuario.getId().equals(dto.responsavelId()))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("O novo responsável não é um técnico ativo desta empresa."));
+        Usuario responsavelAnterior = chamado.getTecnico();
+        if (responsavelAnterior != null && responsavelAnterior.getId().equals(novoResponsavel.getId())) {
+            return toResposta(chamado, deveOcultarPrioridade());
+        }
+
+        chamado.setTecnico(novoResponsavel);
+        InteracaoChamado historico = new InteracaoChamado();
+        historico.setChamado(chamado);
+        historico.setAutor(usuarioRepository.getReferenceById(ator.getId()));
+        historico.setTipo("Transferência");
+        String origem = responsavelAnterior == null ? "Sem responsável" : responsavelAnterior.getNome();
+        historico.setMensagem("Chamado repassado de " + origem + " para " + novoResponsavel.getNome() + ".");
+        interacaoRepository.save(historico);
+
+        return toResposta(chamado, deveOcultarPrioridade());
+    }
+
+    private Usuario selecionarTecnicoComMenorCarga(Long empresaId) {
+        List<StatusChamado> emAtendimento = List.of(
+                StatusChamado.ABERTO, StatusChamado.EM_ANDAMENTO, StatusChamado.EM_ATRASO);
+        List<Usuario> tecnicos = usuarioRepository.findAllByEmpresaIdAndPerfilInAndAtivoTrueOrderByNomeAsc(
+                empresaId, List.of(PerfilUsuario.TECNICO));
+        return tecnicos.stream()
+                .min(Comparator.comparingLong((Usuario tecnico) ->
+                                chamadoRepository.countByEmpresaIdAndTecnicoIdAndStatusIn(empresaId, tecnico.getId(), emAtendimento))
+                        .thenComparing(Usuario::getId))
+                .orElseThrow(() -> new IllegalStateException("Não há técnicos ativos para receber novos chamados."));
+    }
+
+    private List<Usuario> listarTecnicosAtivos(Long empresaId) {
+        return usuarioRepository.findAllByEmpresaIdAndPerfilInAndAtivoTrueOrderByNomeAsc(
+                empresaId, List.of(PerfilUsuario.TECNICO, PerfilUsuario.ADMIN));
     }
 
     private void publicarAlteracaoStatus(Chamado chamado, StatusChamado anterior, StatusChamado novo) {

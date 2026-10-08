@@ -20,6 +20,10 @@ public class AnexoChamado {
     @JoinColumn(name = "chamado_id", nullable = false)
     private Chamado chamado;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "gmud_id")
+    private Gmud gmud;
+
     @Column(name = "nome_original", nullable = false, length = 255)
     private String nomeOriginal;
 

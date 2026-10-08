@@ -4,6 +4,8 @@ import br.com.conecta21.api.dto.AnexoRespostaDTO;
 import br.com.conecta21.api.dto.ChamadoCriacaoDTO;
 import br.com.conecta21.api.dto.ChamadoRespostaDTO;
 import br.com.conecta21.api.dto.ChamadoStatusDTO;
+import br.com.conecta21.api.dto.ChamadoResponsavelAlteracaoDTO;
+import br.com.conecta21.api.dto.ResponsavelChamadoDTO;
 import br.com.conecta21.api.dto.KanbanResponseDTO;
 import br.com.conecta21.api.service.AnexoChamadoService;
 import br.com.conecta21.api.service.ChamadoService;
@@ -89,6 +91,17 @@ public class ChamadoController {
     public ResponseEntity<ChamadoRespostaDTO> alterarStatus(
             @PathVariable Long id, @RequestBody @Valid ChamadoStatusDTO dto) {
         return ResponseEntity.ok(chamadoService.alterarStatus(id, dto));
+    }
+
+    @GetMapping("/{id}/responsaveis")
+    public ResponseEntity<List<ResponsavelChamadoDTO>> listarResponsaveis(@PathVariable Long id) {
+        return ResponseEntity.ok(chamadoService.listarResponsaveis(id));
+    }
+
+    @PatchMapping("/{id}/responsavel")
+    public ResponseEntity<ChamadoRespostaDTO> transferirResponsavel(
+            @PathVariable Long id, @RequestBody @Valid ChamadoResponsavelAlteracaoDTO dto) {
+        return ResponseEntity.ok(chamadoService.transferirResponsavel(id, dto));
     }
 
     @PostMapping(value = "/{id}/anexos", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)

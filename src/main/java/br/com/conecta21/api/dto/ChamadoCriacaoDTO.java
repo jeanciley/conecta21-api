@@ -14,15 +14,20 @@ public record ChamadoCriacaoDTO(
         String descricao,
 
         @NotNull Long categoriaId,
-        Long tecnicoId,
         boolean interno,
         TipoChamado tipo
 ) {
+    public ChamadoCriacaoDTO(String titulo, String descricao, Long categoriaId, boolean interno) {
+        this(titulo, descricao, categoriaId, interno, null);
+    }
+
+    /** Mantido para compatibilidade de código legado; tecnicoId não participa da criação. */
+    @Deprecated
     public ChamadoCriacaoDTO(String titulo, String descricao, Long categoriaId, Long tecnicoId, boolean interno) {
-        this(titulo, descricao, categoriaId, tecnicoId, interno, null);
+        this(titulo, descricao, categoriaId, interno, null);
     }
 
     public ChamadoCriacaoDTO(String titulo, String descricao, br.com.conecta21.api.model.PrioridadeChamado prioridade) {
-        this(titulo, descricao, null, null, false, null);
+        this(titulo, descricao, null, false, null);
     }
 }

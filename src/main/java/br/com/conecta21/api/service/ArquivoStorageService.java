@@ -9,6 +9,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.io.ByteArrayInputStream;
 import java.net.MalformedURLException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -64,6 +65,31 @@ public class ArquivoStorageService {
                     normalizarSeparadores(diretorioRaiz.relativize(destino).toString()));
         } catch (IOException ex) {
             throw new IllegalStateException("Falha ao armazenar o arquivo " + nomeOriginal + ".", ex);
+        }
+    }
+
+    public ArquivoSalvo salvar(byte[] conteudo, String nomeOriginal, String tipoMime, Path subdiretorio,
+                               Set<String> extensoesPermitidas) {
+        if (conteudo == null || conteudo.length == 0) {
+            throw new IllegalArgumentException("O arquivo gerado est\u00e1 vazio.");
+        }
+        String nomeLimpo = StringUtils.cleanPath(nomeOriginal == null ? "arquivo" : nomeOriginal);
+        validarNome(nomeLimpo);
+        String extensao = extrairExtensao(nomeLimpo);
+        if (!extensoesPermitidas.contains(extensao)) {
+            throw new IllegalArgumentException("Tipo de arquivo n\u00e3o permitido.");
+        }
+
+        String nomeArmazenado = UUID.randomUUID() + "." + extensao;
+        Path destino = diretorioRaiz.resolve(subdiretorio).resolve(nomeArmazenado).normalize();
+        garantirDentroDaRaiz(destino);
+        try {
+            Files.createDirectories(destino.getParent());
+            Files.copy(new ByteArrayInputStream(conteudo), destino, StandardCopyOption.REPLACE_EXISTING);
+            return new ArquivoSalvo(nomeLimpo, nomeArmazenado, tipoMime, conteudo.length,
+                    normalizarSeparadores(diretorioRaiz.relativize(destino).toString()));
+        } catch (IOException ex) {
+            throw new IllegalStateException("Falha ao armazenar o arquivo " + nomeLimpo + ".", ex);
         }
     }
 

@@ -80,6 +80,7 @@
 		<dependency>
 			<groupId>org.projectlombok</groupId>
 			<artifactId>lombok</artifactId>
+			<version>1.18.48</version>
 			<optional>true</optional>
 		</dependency>
 		<dependency>
@@ -91,6 +92,11 @@
 			<groupId>org.apache.pdfbox</groupId>
 			<artifactId>pdfbox</artifactId>
 			<version>3.0.8</version>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.poi</groupId>
+			<artifactId>poi-ooxml</artifactId>
+			<version>5.5.1</version>
 		</dependency>
 		<dependency>
 			<groupId>com.bucket4j</groupId>
@@ -127,6 +133,7 @@
 						<path>
 							<groupId>org.projectlombok</groupId>
 							<artifactId>lombok</artifactId>
+							<version>1.18.48</version>
 						</path>
 					</annotationProcessorPaths>
 				</configuration>

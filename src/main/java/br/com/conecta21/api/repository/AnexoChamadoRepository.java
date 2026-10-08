@@ -12,5 +12,7 @@ public interface AnexoChamadoRepository extends JpaRepository<AnexoChamado, Long
 
     List<AnexoChamado> findAllByChamadoIdAndChamadoEmpresaIdOrderByDataUploadAsc(Long chamadoId, Long empresaId);
 
+    List<AnexoChamado> findAllByChamadoIdAndChamadoEmpresaIdAndGmudIsNullOrderByDataUploadAsc(Long chamadoId, Long empresaId);
+
     Optional<AnexoChamado> findByIdAndChamadoIdAndChamadoEmpresaId(Long anexoId, Long chamadoId, Long empresaId);
 }
