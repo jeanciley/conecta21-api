@@ -23,6 +23,10 @@ public class EmailService {
         mensagem.setSubject(ativacao ? "Ative seu acesso ao Conecta21" : "Redefinição de senha do Conecta21");
         mensagem.setText("Olá, " + nome + ".\n\nUse o link abaixo para " + (ativacao ? "definir sua senha e ativar sua conta" : "definir uma nova senha") + ":\n" + link + "\n\nO link expira em 30 minutos. Se você não solicitou esta mensagem, ignore-a.");
         try { sender.send(mensagem); return true; }
-        catch (MailException ex) { log.error("Falha ao enviar e-mail de autenticação para {}", destino, ex); return false; }
+        catch (MailException ex) {
+            log.error("Falha ao enviar e-mail de autenticação para {}", destino, ex);
+            log.warn("SMTP indisponível. Link manual de {} para {}: {}", ativacao ? "ativação" : "redefinição", destino, link);
+            return false;
+        }
     }
 }

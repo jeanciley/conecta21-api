@@ -25,6 +25,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.GetMapping;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/usuarios")
@@ -34,9 +35,17 @@ public class UsuarioController {
     private UsuarioService usuarioService;
 
     @PostMapping
-    public ResponseEntity<Void> cadastrar(@RequestBody @Valid UsuarioCadastroDTO dto) {
-        usuarioService.cadastrarMembro(dto);
-        return ResponseEntity.status(HttpStatus.CREATED).build();
+    public ResponseEntity<Map<String, Object>> cadastrar(@RequestBody @Valid UsuarioCadastroDTO dto) {
+        UsuarioService.CadastroMembroResultado resultado = usuarioService.cadastrarMembro(dto);
+        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
+                "id", resultado.id(),
+                "emailEnviado", resultado.emailEnviado()));
+    }
+
+    @PostMapping("/{id}/reenviar-ativacao")
+    public ResponseEntity<Void> reenviarAtivacao(@PathVariable Long id) {
+        usuarioService.reenviarAtivacao(id);
+        return ResponseEntity.accepted().build();
     }
 
     @GetMapping

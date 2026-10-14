@@ -12,6 +12,8 @@ import br.com.conecta21.api.model.PerfilUsuario;
 import br.com.conecta21.api.security.TenantContext;
 import br.com.conecta21.api.repository.UsuarioRepository;
 import br.com.conecta21.api.repository.PerfilCustomizadoRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.Resource;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -32,6 +34,11 @@ import java.util.stream.Collectors;
 
 @Service
 public class UsuarioService {
+
+    private static final Logger log = LoggerFactory.getLogger(UsuarioService.class);
+
+    public record CadastroMembroResultado(Long id, boolean emailEnviado) {
+    }
 
     private static final long TAMANHO_MAX_AVATAR = 5L * 1024L * 1024L;
     private static final Set<String> EXTENSOES_AVATAR = Set.of("png", "jpg", "jpeg", "webp");
@@ -56,7 +63,7 @@ public class UsuarioService {
     private PerfilCustomizadoRepository perfilRepository;
 
     @Transactional
-    public Usuario cadastrarMembro(UsuarioCadastroDTO dto) {
+    public CadastroMembroResultado cadastrarMembro(UsuarioCadastroDTO dto) {
 
         Usuario adminLogado = tenantContext.getUsuarioAutenticado();
         if (!adminLogado.temPermissao("GERENCIAR_USUARIOS") || dto.perfil() == PerfilUsuario.ADMIN) {
@@ -82,8 +89,30 @@ public class UsuarioService {
         novoUsuario.setAtivo(false);
 
         Usuario salvo = usuarioRepository.save(novoUsuario);
-        fluxoSenhaService.enviarAtivacao(salvo);
-        return salvo;
+        try {
+            fluxoSenhaService.enviarAtivacao(salvo);
+        } catch (IllegalStateException ex) {
+            // E-mail de ativação é melhor esforço: o membro permanece
+            // cadastrado (aguardando ativação) e o admin pode reenviar depois.
+            log.warn("Membro {} cadastrado, mas o e-mail de ativação falhou: {}", salvo.getEmail(), ex.getMessage());
+            return new CadastroMembroResultado(salvo.getId(), false);
+        }
+        return new CadastroMembroResultado(salvo.getId(), true);
+    }
+
+    @Transactional
+    public void reenviarAtivacao(Long id) {
+        Usuario ator = tenantContext.getUsuarioAutenticado();
+        if (!ator.temPermissao("GERENCIAR_USUARIOS")) {
+            throw new org.springframework.security.access.AccessDeniedException("Sem permissão para reenviar ativações.");
+        }
+        Usuario alvo = usuarioRepository.findById(id)
+                .filter(u -> u.getEmpresa().getId().equals(ator.getEmpresa().getId()))
+                .orElseThrow(() -> new EntityNotFoundException("Usuário não encontrado."));
+        if (alvo.isAtivo()) {
+            throw new IllegalStateException("Usuário já está ativo.");
+        }
+        fluxoSenhaService.enviarAtivacao(alvo);
     }
 
     @Transactional(readOnly = true)
